@@ -18,7 +18,7 @@ Informe seu nome de personagem, crie a oficina uma vez e compartilhe seu link co
 
 Uma encomenda registra cliente, itens livres, quantidades, valores e observações. Itens ainda não cadastrados são aceitos. Selecione uma receita para preencher seu preço ou informe um valor manual; preços em branco ficam **a combinar**.
 
-Os status são **Pendente**, **Em produção** e **Entregue**. **Assumir** registra quem começou a produção; **Registrar entrega** registra quem fez, quem entregou e quando. O histórico permanece disponível ao reabrir uma encomenda. Os valores acordados ficam registrados no pedido, mesmo se o catálogo mudar.
+Os status são **Pendente**, **Em produção**, **Pronta (craftada)** e **Entregue ao cliente**. **Assumir** registra quem começou a produção. Cada item novo pode receber materiais, quantidades, produção por receita, mão de obra, lucro e custos fixos. O sistema calcula seu preço e o total do pedido. A receita fica compartilhada junto do item e pode ser salva também como nova receita pessoal. **Marcar item como feito** registra quem produziu cada item; quando todos estão feitos, a encomenda fica **Pronta (craftada)**. Só então **Entregar ao cliente** registra a entrega, com responsável e data separados da produção. O histórico permanece disponível ao reabrir uma encomenda. Os valores acordados ficam registrados no pedido, mesmo se o catálogo mudar.
 
 Veja [backend/README.md](backend/README.md) para detalhes do serviço compartilhado e hospedagem alternativa. O serviço inicial de revisão é privado; precisa ser liberado para os ferreiros junto da publicação no GitHub Pages.
 

@@ -1,9 +1,9 @@
-import {createOrder,changeOrder,OrderError} from './order-model.mjs';
+import {createOrder,changeOrder,normalizeOrder,OrderError} from './order-model.mjs';
 
 const ALLOWED_ORIGINS=new Set(['https://devmiojo.github.io','https://forja-encomendas.lannahechee.chatgpt.site']);
 const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const json=(data,status=200,origin='')=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Vary':'Origin',...(origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Credentials':'true'}:{})}});
-const decode=row=>({...JSON.parse(row.document),id:row.id,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at});
+const decode=row=>({...normalizeOrder(JSON.parse(row.document)),id:row.id,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at});
 async function body(request){
   if(!request.headers.get('content-type')?.includes('application/json'))throw new OrderError('Envie dados em JSON.',415);
   const raw=await request.text();if(raw.length>65536)throw new OrderError('Encomenda muito grande.',413);

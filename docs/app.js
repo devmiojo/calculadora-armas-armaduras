@@ -85,4 +85,4 @@ document.addEventListener('click',e=>{if(!e.target.closest('.search-box')&&!e.ta
 if(window.matchMedia('(max-width:650px)').matches){let bar=document.createElement('div');bar.className='filter-bar mobile-backup';let a=document.createElement('button');a.className='button secondary';a.textContent='↗ Exportar backup';a.onclick=downloadBackup;let b=document.createElement('button');b.className='button secondary';b.textContent='↙ Importar backup';b.onclick=()=>$('#backup-file').click();bar.append(a,b);$('#recipes').append(bar)}
 persist();syncCategories();loadDraft(draft);renderCatalog();if(initialPricingError)toast(initialPricingError);
 
-window.FORJA_APP={esc,fmt,calc,toast,switchView,getRecipes:()=>state.recipes};
+window.FORJA_APP={esc,fmt,calc,toast,switchView,getRecipes:()=>state.recipes,getMaterials:()=>state.materials,getCategories:()=>[...new Set([...categories,...state.recipes.map(r=>r.category)])],saveOrderRecipe:recipe=>{const candidate=structuredClone(state),saved={...structuredClone(recipe),id:uid()};candidate.recipes.push(saved);commitPricing(candidate);renderRecipes();return saved}};

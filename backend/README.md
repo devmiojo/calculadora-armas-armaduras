@@ -10,7 +10,9 @@ O serviço preparado para esta aplicação é `https://forja-encomendas.lannahec
 2. O responsável cria a oficina uma vez e copia **Compartilhar oficina**.
 3. Os ferreiros abrem esse link para acessar a mesma lista.
 4. Cadastre cliente, itens livres, quantidades, valores e observações. Receitas existentes podem preencher o preço; itens sem receita também são aceitos.
-5. Use **Assumir** para registrar quem iniciou a produção. Em **Registrar entrega**, informe quem fez os itens. O pedido guarda o responsável, quem registrou a entrega, data e histórico.
+5. O ferreiro pode usar **Definir materiais e calcular** em cada item livre: busca ingredientes no catálogo ou informa materiais livres, quantidades e preços. A mão de obra e o orçamento são calculados automaticamente.
+6. **Marcar item como feito** registra quem craftou aquele item; ferreiros diferentes podem fazer itens diferentes. Quando todos estão feitos, o pedido fica **Pronto (craftado)**, ainda sem entrega.
+7. Use **Entregar ao cliente** depois de pronto. Quem produziu permanece registrado e a entrega recebe responsável e data próprios.
 
 O link autoriza acesso à oficina e é transportado no fragmento da URL. A chave é armazenada no navegador dos participantes; o banco guarda somente seu hash. A API exige a chave em cada leitura ou alteração de encomendas. O nome do ferreiro é informado manualmente para o RP.
 
@@ -28,7 +30,7 @@ As atualizações usam versões para impedir que duas pessoas sobrescrevam o mes
 | Criar encomenda | `POST /api/orders` |
 | Editar, assumir, entregar ou reabrir | `PATCH /api/orders/:id` |
 
-As requisições da oficina usam `X-Workshop-Id` e `Authorization: Bearer <chave>`. As alterações incluem a versão atual. Ações disponíveis: `edit`, `start`, `deliver`, `reopen`.
+As requisições da oficina usam `X-Workshop-Id` e `Authorization: Bearer <chave>`. As alterações incluem a versão atual. Ações disponíveis: `edit`, `start`, `edit_item`, `make_item`, `complete`, `deliver`, `reopen_item`, `reopen`. `edit_item` salva a receita no item e recalcula o orçamento no servidor. `make_item` registra a produção de um item; `complete` conclui todos os pendentes. `deliver` somente é permitido quando o pedido está pronto.
 
 ## Hospedagem alternativa
 
