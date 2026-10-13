@@ -184,3 +184,21 @@ test('the interface requires passwords and removes only the selected workshop, i
   reload.node('#smith-name').value='Kai';const recipe=reload.app.getRecipes()[0];await reload.node('#recipe-cards').onclick({target:{closest:()=>({dataset:{delete:recipe.id}})}});await reload.node('#confirm-delete').onclick();assert.match(reload.node('#toast').textContent,/senha master/);assert.ok(reload.app.getRecipes().some(r=>r.id===recipe.id));
   reload.node('#delete-recipe-password').value=TEST_MASTER;await reload.node('#confirm-delete').onclick();assert.ok(!reload.app.getRecipes().some(r=>r.id===recipe.id));assert.equal(reload.node('#delete-recipe-password').value,'');assert.ok([...reload.storage.values()].every(value=>!value.includes(TEST_MASTER)));
 });
+
+test('catalog items can be deleted with the master password while linked recipes keep their last price',async()=>{
+  const {request,fetch}=fixture(),room=(await request('/api/workshops','POST',{name:'Rosa'})).data,a=browser(fetch),b=browser(fetch);await a.connect(room);await b.connect(room);
+  const wood=structuredClone(a.app.getMaterials().find(m=>m.id==='m12'));
+  const candidate={materials:structuredClone(a.app.getMaterials()),recipes:structuredClone(a.app.getRecipes())};candidate.materials.push({...wood,id:'wood-another-vendor',vendor:'Outro vendedor',price:10});await a.app.commitCatalog(candidate);
+  a.node('#catalog-rows').onclick({target:{closest:()=>({dataset:{deleteMaterial:wood.id}})}});
+  assert.equal(a.node('#confirm-delete-title').textContent,'Excluir item do catálogo?');assert.ok(a.node('#confirm-text').textContent.includes(wood.vendor));assert.ok(a.node('#confirm-text').textContent.includes(wood.name));
+  a.node('#delete-recipe-password').value='incorreta';await a.node('#confirm-delete').onclick();assert.match(a.node('#toast').textContent,/Senha master incorreta/);assert.ok(a.app.getMaterials().some(m=>m.id===wood.id));assert.equal(a.node('#delete-recipe-password').value,'');
+  a.node('#delete-recipe-password').value=TEST_MASTER;await a.node('#confirm-delete').onclick();assert.ok(!a.app.getMaterials().some(m=>m.id===wood.id));assert.ok(a.app.getMaterials().some(m=>m.id==='wood-another-vendor'));
+  const charcoal=a.app.getRecipes().find(r=>r.id==='seed-charcoal-3-wood');assert.equal(charcoal.lines[0].price,5);assert.equal(charcoal.lines[0].materialId,null);assert.equal(charcoal.lines[0].manualPrice,true);assert.equal(a.app.calc(charcoal).sale,18);assert.equal(a.app.getMaterials().find(m=>m.id==='m11').price,18);
+  await b.sync.refresh();assert.ok(!b.app.getMaterials().some(m=>m.id===wood.id));assert.equal(b.app.calc(b.app.getRecipes().find(r=>r.id===charcoal.id)).sale,18);
+  const reload=browser(fetch);await reload.connect(room);assert.ok(!reload.app.getMaterials().some(m=>m.id===wood.id));assert.equal(a.node('#delete-recipe-password').value,'');
+});
+
+test('a price deletion confirmation cannot act on another workshop after switching',async()=>{
+  const {request,fetch}=fixture(),a=(await request('/api/workshops','POST',{name:'A'})).data,b=(await request('/api/workshops','POST',{name:'B'})).data,ui=browser(fetch);await ui.connect(a);
+  ui.node('#catalog-rows').onclick({target:{closest:()=>({dataset:{deleteMaterial:'m12'}})}});await ui.connect(b);ui.node('#delete-recipe-password').value=TEST_MASTER;await ui.node('#confirm-delete').onclick();assert.match(ui.node('#toast').textContent,/oficina ou o registro mudou/);assert.ok(ui.app.getMaterials().some(m=>m.id==='m12'));
+});

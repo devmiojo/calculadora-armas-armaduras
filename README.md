@@ -49,3 +49,5 @@ Os testes verificam os recálculos em cadeia, a persistência de encomendas, ite
 ## Exclusões
 
 **Excluir** na lista de oficinas e nas receitas exige uma senha master validada pelo servidor. A senha é configurada como segredo de produção `FORGE_MASTER_PASSWORD`; ela não é publicada no frontend nem lembrada no navegador. Excluir uma oficina exige também seu nome exato e afeta somente o identificador selecionado, mesmo quando existem nomes iguais. A oficina sai da lista e deixa de ser acessível; os registros são preservados no banco. A exclusão de uma receita mantém os materiais e os valores já combinados nas encomendas.
+
+O catálogo de preços também oferece **Excluir** por item/vendedor, protegido pela mesma senha master. A confirmação identifica o nome, vendedor e preço. Receitas dependentes mantêm o último valor do ingrediente como preço próprio; outras ofertas do mesmo item e encomendas já registradas são preservadas.
