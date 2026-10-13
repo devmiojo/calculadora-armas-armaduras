@@ -1,16 +1,32 @@
 # Forja dos Mercadores
 
-Calculadora de preços para ferreiros de Skyrim RP. Site estático em português, com 71 preços de 9 vendedores e cinco receitas iniciais de equipamentos de aço.
+Calculadora de preços e livro de encomendas para ferreiros de Skyrim RP. Inclui 71 registros de 9 vendedores, oito receitas iniciais e busca em português e inglês.
 
-## Usar
+## Precificar
 
-Pesquise um material, adicione as quantidades, ajuste os preços, informe mão de obra e defina o percentual sobre o custo. Salve receitas por categoria e consulte o catálogo de fornecedores.
+Pesquise materiais, ajuste quantidades e informe mão de obra em percentual, custos fixos e lucro sobre o custo. Alterar um preço vinculado atualiza automaticamente todas as receitas dependentes. Um material também pode usar o preço calculado de outra receita.
 
-As receitas e os preços personalizados ficam no navegador de cada ferreiro. Use **Exportar backup** e **Importar backup** para transferir registros. Não existe banco de dados compartilhado nesta versão.
+Para cobrar somente 10–15% de mão de obra, use esse percentual no campo **Mão de obra do ferreiro** e deixe o lucro em zero. O arredondamento eleva o preço ao múltiplo selecionado. Nenhum imposto é acrescentado automaticamente.
+
+Referências atualizadas de Alvor: aço 38, corundum 66, ferro 15 e tiras 5 septims. Lenha usa o valor definido de 5. Carvão é calculado a partir de 3 lenhas + 15% de mão de obra, arredondado para cima: 18 septims.
+
+Receitas, materiais e preços ficam em um catálogo compartilhado por oficina no banco D1. Todos que entram pelo mesmo link podem criar, modificar, duplicar e excluir receitas e editar preços. A tela **Precificar** inicia vazia, inclusive ao trocar de oficina. Use **Abrir** em uma receita salva para carregá-la na calculadora. O catálogo atualiza automaticamente a cada 20 segundos e ao voltar à página; **Atualizar catálogo** permite buscar as mudanças imediatamente. Cada alteração registra nome e data e usa uma versão para impedir que uma edição simultânea sobrescreva outra. Rascunhos em edição são preservados quando há conflito; atualize e reabra o registro antes de tentar novamente.
+
+O primeiro acesso inicializa o catálogo vazio com os registros antigos daquele navegador. Nos demais computadores, **Compartilhar receitas antigas deste navegador** importa apenas registros novos, sem substituir receitas ou preços já existentes. O armazenamento antigo permanece intacto. **Exportar backup** exporta o catálogo atual; **Importar backup** compartilha os registros novos com a oficina. Sem oficina ou sem conexão, a calculadora permite consultar e simular, mas não confirma salvamentos compartilhados.
+
+## Encomendas
+
+Informe seu nome de personagem e crie a oficina uma vez. Ela permanece na lista **Oficinas criadas**, disponível em qualquer computador. Os jogadores entram pelo botão **Entrar** junto ao nome, sem precisar de link. O link antigo continua funcionando como atalho. A oficina usa um banco compartilhado: todos os participantes veem as mesmas encomendas, independentemente do computador.
+
+Uma encomenda registra cliente, itens livres, quantidades, valores e observações. Itens ainda não cadastrados são aceitos. Selecione uma receita para preencher seu preço ou informe um valor manual; preços em branco ficam **a combinar**.
+
+Os status são **Pendente**, **Em produção**, **Pronta (craftada)** e **Entregue ao cliente**. **Assumir** registra quem começou a produção. Cada item novo pode receber materiais, quantidades, produção por receita, mão de obra, lucro e custos fixos. O sistema calcula seu preço e o total do pedido. A receita fica compartilhada junto do item e pode ser salva também como nova receita no catálogo compartilhado. **Marcar item como feito** registra quem produziu cada item; quando todos estão feitos, a encomenda fica **Pronta (craftada)**. Só então **Entregar ao cliente** registra a entrega, com responsável e data separados da produção. O histórico permanece disponível ao reabrir uma encomenda. Os valores acordados ficam registrados no pedido, mesmo se o catálogo mudar.
+
+Veja [backend/README.md](backend/README.md) para detalhes do serviço compartilhado e hospedagem alternativa. O serviço inicial de revisão é privado; precisa ser liberado para os ferreiros junto da publicação no GitHub Pages.
 
 ## Publicar no GitHub Pages
 
-Em **Settings → Pages**, escolha **Deploy from a branch**, selecione a branch que contém estes arquivos e a pasta **/docs**, e salve. O site não exige instalação ou etapa de build.
+Em **Settings → Pages**, escolha **Deploy from a branch**, selecione `main` e a pasta `/docs`. A calculadora estática não exige instalação nem build. O serviço de encomendas deve estar publicado no endereço configurado em `docs/orders-config.js`.
 
 ## Executar localmente
 
@@ -18,15 +34,14 @@ Em **Settings → Pages**, escolha **Deploy from a branch**, selecione a branch 
 python3 -m http.server 8000 --directory docs
 ```
 
-Abra `http://localhost:8000`.
+Abra `http://localhost:8000`. Simulações funcionam localmente; salvamentos e encomendas usam a API configurada e as origens autorizadas no serviço.
 
-## Arquivos
+## Verificar
 
-- `docs/index.html`: interface.
-- `docs/style.css`: estilos e adaptação para celular.
-- `docs/data.js`: catálogo inicial.
-- `docs/app.js`: cálculos, receitas, categorias e backups.
+Com Node 24:
 
-## Precificação
+```sh
+node --test tests/pricing.test.cjs tests/orders.test.mjs tests/catalog.test.mjs
+```
 
-O campo de lucro aplica um acréscimo sobre o custo, e o arredondamento eleva o preço ao múltiplo selecionado. Para cobrar apenas 10–15% de mão de obra sobre os materiais, deixe os custos extras em zero e use 10 ou 15 no campo percentual. Nenhum imposto é acrescentado automaticamente.
+Os testes verificam os recálculos em cadeia, a persistência de encomendas, itens livres, entregas, histórico, concorrência e separação entre oficinas.
