@@ -3,7 +3,8 @@ import {ORDER_STATUSES,validateItems,orderTotal,validateRecipe,recipeQuote} from
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const app=window.FORJA_APP,esc=app.esc,fmt=app.fmt;
 const ROOM_KEY='forja-orders-workshop-v1',NAME_KEY='forja-orders-smith-v1',ROOMS_KEY='forja-orders-known-workshops-v1';
-let room=null,orders=[],directory=[],directoryLoading=false,editor=null,deliveryId=null,busy=false,loading=false,recipeEditor=null;
+let room=null,orders=[],directory=[],directoryLoading=false,editor=null,deliveryId=null,busy=false,loading=false,recipeEditor=null,deleteTarget=null;
+const removedRooms=new Set();
 const stored=key=>{try{return localStorage.getItem(key)}catch{return null}};
 const saveLocal=(key,value)=>{try{localStorage.setItem(key,value)}catch{app.toast('Não foi possível lembrar a oficina neste navegador. Guarde o link compartilhado.')}};
 try{room=JSON.parse(stored(ROOM_KEY));if(!room?.id||!room?.key)room=null}catch{}
@@ -23,7 +24,7 @@ const api=async(path,options={},access=room)=>{
   let data;try{data=await response.json()}catch{throw Error('O serviço de encomendas ainda não está disponível para este navegador.');}
   if(!response.ok){const error=Error(data.error||'Não foi possível salvar.');error.status=response.status;throw error;}return data;
 };
-async function action(fn){if(busy)return;busy=true;$$('#orders button, #order-dialog button, #order-delivery-dialog button, #order-item-recipe-dialog button').forEach(b=>b.disabled=true);try{await fn()}catch(error){if(error.status===409)await refresh(false);app.toast(error.message)}finally{busy=false;$$('#orders button, #order-dialog button, #order-delivery-dialog button, #order-item-recipe-dialog button').forEach(b=>b.disabled=false);renderDirectory()}}
+async function action(fn){if(busy)return;busy=true;$$('#orders button, #order-dialog button, #order-delivery-dialog button, #order-item-recipe-dialog button, #workshop-delete-dialog button').forEach(b=>b.disabled=true);try{await fn()}catch(error){if(error.status===409)await refresh(false);app.toast(error.message)}finally{busy=false;$$('#orders button, #order-dialog button, #order-delivery-dialog button, #order-item-recipe-dialog button, #workshop-delete-dialog button').forEach(b=>b.disabled=false);renderDirectory();syncDeleteButton()}}
 function accessCode(access){return btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({id:access.id,key:access.key,name:access.name})))).replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'')}
 function parseAccess(value){
   const code=value.includes('#oficina=')?value.split('#oficina=')[1].split('&')[0]:value.trim();
@@ -33,13 +34,13 @@ function parseAccess(value){
 async function join(access){const verified=await api('/api/workshops',{},access);room={...access,name:verified.name};saveLocal(ROOM_KEY,JSON.stringify(room));rememberRoom(room);history.replaceState(null,'',location.pathname+location.search);await window.FORJA_CATALOG.connect({room,api:((access)=>(path,options)=>api(path,options,access))(room),actor:smith,initialActor:$('#smith-name').value.trim()});await refresh(true);app.switchView('orders');}
 function renderDirectory(){
   const q=$('#workshop-filter').value.trim();
-  const available=[...directory,...knownRooms().filter(r=>!directory.some(d=>d.id===r.id))];
+  const available=[...directory,...knownRooms().filter(r=>!directory.some(d=>d.id===r.id))].filter(r=>!removedRooms.has(r.id));
   const rows=available.filter(r=>!q||window.ITEM_SEARCH.matches({name:r.name},q));
-  $('#workshop-list').innerHTML=rows.length?rows.map(r=>`<article class="workshop-entry"><div><h3>${esc(r.name)}</h3><small>#${esc(r.id.slice(0,8))}</small></div><button class="button ${room?.id===r.id?'secondary':'primary'}" data-enter-workshop="${esc(r.id)}" ${room?.id===r.id?'disabled':''}>${room?.id===r.id?'Oficina atual':'Entrar'}</button></article>`).join(''):`<p class="fine">${q?'Nenhuma oficina encontrada.':'Nenhuma oficina criada ainda. Crie a primeira abaixo.'}</p>`;
+  $('#workshop-list').innerHTML=rows.length?rows.map(r=>`<article class="workshop-entry"><div><h3>${esc(r.name)}</h3><small>#${esc(r.id.slice(0,8))}${r.createdAt?' · '+date(r.createdAt):''}</small></div><div class="workshop-entry-actions"><button class="button ${room?.id===r.id?'secondary':'primary'}" data-enter-workshop="${esc(r.id)}" ${room?.id===r.id?'disabled':''}>${room?.id===r.id?'Oficina atual':'Entrar'}</button><button class="text-button workshop-delete" data-delete-workshop="${esc(r.id)}">Excluir</button></div></article>`).join(''):`<p class="fine">${q?'Nenhuma oficina encontrada.':'Nenhuma oficina criada ainda. Crie a primeira abaixo.'}</p>`;
 }
 async function refreshDirectory(showError=true){
   if(directoryLoading)return;directoryLoading=true;$('#workshops-sync').textContent='Buscando oficinas…';
-  try{const data=await api('/api/workshops',{},null);directory=data.workshops;$('#workshops-sync').textContent='Oficinas salvas · disponíveis em qualquer computador';renderDirectory()}
+  try{const data=await api('/api/workshops',{},null);directory=data.workshops.filter(r=>!removedRooms.has(r.id));const ids=new Set(directory.map(r=>r.id));saveLocal(ROOMS_KEY,JSON.stringify(knownRooms().filter(r=>ids.has(r.id))));if(room&&!ids.has(room.id))leaveRoom();$('#workshops-sync').textContent='Oficinas salvas · disponíveis em qualquer computador';renderDirectory()}
   catch(error){$('#workshops-sync').textContent='Não foi possível atualizar as oficinas. Tente novamente.';if(showError)app.toast(error.message)}
   finally{directoryLoading=false}
 }
@@ -64,11 +65,16 @@ async function refresh(showError=true){
 $('#create-workshop-form').onsubmit=e=>{e.preventDefault();return action(async()=>{const access=await api('/api/workshops',{method:'POST',body:JSON.stringify({name:$('#new-workshop-name').value.trim()})},null);await refreshDirectory(false);await join(access);app.toast('Oficina criada. Agora ela aparece na lista para todos entrarem.');})};
 $('#refresh-workshops').onclick=()=>refreshDirectory(true);
 $('#workshop-filter').oninput=renderDirectory;
-$('#workshop-list').onclick=e=>{const button=e.target.closest('[data-enter-workshop]');if(!button||button.disabled)return;return action(async()=>{const id=button.dataset.enterWorkshop;if(room?.id===id)return;const access=knownRooms().find(r=>r.id===id)||await api('/api/workshops/'+encodeURIComponent(id)+'/join',{method:'POST'},null);await join(access);app.toast('Você entrou na oficina. Receitas, preços e encomendas carregados.');})};
+$('#workshop-list').onclick=e=>{const button=e.target.closest('[data-enter-workshop], [data-delete-workshop]');if(!button||button.disabled)return;if(button.dataset.deleteWorkshop){deleteTarget=directory.find(r=>r.id===button.dataset.deleteWorkshop)||knownRooms().find(r=>r.id===button.dataset.deleteWorkshop);if(!deleteTarget)return;$('#delete-workshop-name').textContent=deleteTarget.name;$('#delete-workshop-info').textContent='#'+deleteTarget.id.slice(0,8)+(deleteTarget.createdAt?' · Criada em '+date(deleteTarget.createdAt):'');$('#delete-workshop-confirmation').value='';$('#delete-workshop-password').value='';syncDeleteButton();$('#workshop-delete-dialog').showModal();return;}return action(async()=>{const id=button.dataset.enterWorkshop;if(room?.id===id)return;const access=knownRooms().find(r=>r.id===id)||await api('/api/workshops/'+encodeURIComponent(id)+'/join',{method:'POST'},null);await join(access);app.toast('Você entrou na oficina. Receitas, preços e encomendas carregados.');})};
+function leaveRoom(){window.FORJA_CATALOG.disconnect();room=null;orders=[];try{localStorage.removeItem(ROOM_KEY)}catch{}render()}
+function syncDeleteButton(){$('#confirm-delete-workshop').disabled=busy||!deleteTarget||$('#delete-workshop-confirmation').value!==deleteTarget.name||!$('#delete-workshop-password').value}
+$('#delete-workshop-confirmation').oninput=$('#delete-workshop-password').oninput=syncDeleteButton;
+$('#workshop-delete-dialog').addEventListener('close',()=>{$('#delete-workshop-password').value='';deleteTarget=null;syncDeleteButton()});
+$('#workshop-delete-form').onsubmit=e=>{e.preventDefault();return action(async()=>{if(!deleteTarget||$('#delete-workshop-confirmation').value!==deleteTarget.name)throw Error('Digite exatamente o nome da oficina para confirmar.');const target=deleteTarget,actor=smith(),masterPassword=$('#delete-workshop-password').value;if(!masterPassword)throw Error('Informe a senha master.');try{const access=knownRooms().find(r=>r.id===target.id)||await api('/api/workshops/'+encodeURIComponent(target.id)+'/join',{method:'POST'},null);await api('/api/workshops/'+encodeURIComponent(target.id),{method:'DELETE',body:JSON.stringify({actor,confirmationName:target.name,masterPassword})},access);removedRooms.add(target.id);saveLocal(ROOMS_KEY,JSON.stringify(knownRooms().filter(r=>r.id!==target.id)));directory=directory.filter(r=>r.id!==target.id);if(room?.id===target.id)leaveRoom();$('#workshop-delete-dialog').close();await refreshDirectory(false);app.toast('Oficina excluída da lista.')}finally{$('#delete-workshop-password').value=''}})};
 $('#join-workshop-form').onsubmit=e=>{e.preventDefault();return action(async()=>{await join(parseAccess($('#workshop-link').value));app.toast('Você entrou na oficina.');})};
 $('#share-workshop').onclick=()=>{if(!room)return;$('#share-workshop-link').value=window.FORGE_PUBLIC_URL+'#oficina='+accessCode(room);$('#workshop-share-dialog').showModal()};
 $('#copy-workshop-link').onclick=async()=>{try{await navigator.clipboard.writeText($('#share-workshop-link').value);app.toast('Link copiado. Envie aos ferreiros.')}catch{$('#share-workshop-link').select();app.toast('Selecione e copie o link da oficina.')}};
-$('#change-workshop').onclick=()=>{window.FORJA_CATALOG.disconnect();room=null;orders=[];try{localStorage.removeItem(ROOM_KEY)}catch{}render();refreshDirectory(false);app.toast('Escolha uma oficina na lista para entrar.')};
+$('#change-workshop').onclick=()=>{leaveRoom();refreshDirectory(false);app.toast('Escolha uma oficina na lista para entrar.')};
 $('#refresh-orders').onclick=()=>action(async()=>{if(!window.FORJA_CATALOG.getVersion())await window.FORJA_CATALOG.connect({room,api:((access)=>(path,options)=>api(path,options,access))(room),actor:smith,initialActor:$('#smith-name').value.trim()});else await window.FORJA_CATALOG.refresh();await refresh(true)});$('#order-filter').oninput=$('#order-status-filter').onchange=render;
 function renderEditorItems(){
   $('#order-items').innerHTML=editor.items.map((item,i)=>`<div class="order-editor-item"><label>Item<input data-order-line="${i}" data-order-field="name" list="order-recipe-options" maxlength="120" required value="${esc(item.name)}" placeholder="Nome livre ou receita cadastrada"></label><label>Qtd.<input type="number" min="1" max="1000000" step="1" required data-order-line="${i}" data-order-field="qty" value="${item.qty}"></label><label>Valor unitário (S)<input type="number" min="0" max="1000000000" step="0.01" data-order-line="${i}" data-order-field="unitPrice" value="${item.unitPrice??''}" placeholder="A combinar"></label><button type="button" class="icon-button" data-remove-order-item="${i}" aria-label="Remover item">×</button><button type="button" class="text-button order-editor-recipe" data-edit-order-recipe="${i}">${item.recipe?'Editar materiais e cálculo':'Definir materiais e calcular'}</button></div>`).join('');
@@ -146,5 +152,5 @@ render();
 refreshDirectory(false);
 const fragment=location.hash;
 if(fragment.startsWith('#oficina=')){action(async()=>join(parseAccess(fragment))).catch(error=>app.toast(error.message));}else if(room)action(async()=>{const access=room;await window.FORJA_CATALOG.connect({room:access,api:(path,options)=>api(path,options,access),actor:smith,initialActor:$('#smith-name').value.trim()});await refresh(false)});
-setInterval(()=>{if(!document.hidden&&!$('#orders').hidden&&!busy){refreshDirectory(false);if(room)refresh(false)}},20000);
+setInterval(()=>{if(!document.hidden&&!busy){refreshDirectory(false);if(!$('#orders').hidden&&room)refresh(false)}},20000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#orders').hidden){refreshDirectory(false);if(room)refresh(false)}});

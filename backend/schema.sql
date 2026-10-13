@@ -15,7 +15,9 @@ CREATE TABLE `workshops` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`token_hash` text NOT NULL,
-	`created_at` text NOT NULL
+	`created_at` text NOT NULL,
+  `deleted_at` text,
+  `deleted_by` text
 );
 CREATE TABLE `catalogs` (
   `workshop_id` text PRIMARY KEY NOT NULL REFERENCES `workshops`(`id`),

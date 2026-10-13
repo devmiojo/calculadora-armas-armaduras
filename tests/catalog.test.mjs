@@ -8,6 +8,7 @@ import {validateCatalog} from '../backend/catalog-model.mjs';
 import * as orderModel from '../docs/order-model.mjs';
 
 const file=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const TEST_MASTER='senha-de-teste-para-exclusao';
 function fixture(){
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(file('backend/schema.sql'));
   const db={prepare(sql){let args=[];return {
@@ -16,9 +17,9 @@ function fixture(){
     async all(){return {results:sqlite.prepare(sql).all(...args)}},
     async run(){return {meta:{changes:Number(sqlite.prepare(sql).run(...args).changes)}}}
   }}};
-  const fetch=async(url,options={})=>handleOrders(new Request(url,{...options,headers:{...options.headers,Origin:'https://devmiojo.github.io'}}),db);
+  const fetch=async(url,options={})=>handleOrders(new Request(url,{...options,headers:{...options.headers,Origin:'https://devmiojo.github.io'}}),db,TEST_MASTER);
   const request=async(path,method='GET',body,room)=>{const response=await fetch('https://forja-encomendas.lannahechee.chatgpt.site'+path,{method,headers:{'Content-Type':'application/json',...(room?{'X-Workshop-Id':room.id,Authorization:'Bearer '+room.key}:{})},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,data:await response.json()}};
-  return {request,fetch};
+  return {request,fetch,sqlite,db};
 }
 const catalog={materials:[{id:'wood',name:'Lenha',vendor:'Alvor',price:5,stock:15},{id:'coal',name:'Carvão',vendor:'Forja',price:0,stock:20,pricingRecipeId:'charcoal'}],recipes:[{id:'charcoal',name:'Carvão',category:'Outros',output:1,extra:0,labourPct:15,markup:0,round:1,lines:[{materialId:'wood',name:'Lenha',vendor:'Alvor',qty:3,price:0}]},{id:'ingot',name:'Lingote',category:'Outros',output:1,extra:0,labourPct:10,markup:0,round:0,lines:[{materialId:'coal',name:'Carvão',vendor:'Forja',qty:2,price:0}]}]};
 test('shared catalog persists, recalculates dependencies and guards concurrent writers',async()=>{
@@ -81,7 +82,7 @@ test('two computers see recipe edits, price changes and deletions; stale drafts 
   const candidate={materials:structuredClone(a.app.getMaterials()),recipes:structuredClone(a.app.getRecipes())};candidate.materials[0].price=100;
   await assert.rejects(a.app.commitCatalog(candidate));assert.equal(a.app.getMaterials()[0].price,before);
   a.context.fetch=fetch;
-  await b.node('#recipe-cards').onclick({target:{closest:()=>({dataset:{delete:recipe.id}})}});await b.node('#confirm-delete').onclick();await a.sync.refresh();assert.ok(!a.app.getRecipes().some(r=>r.id===recipe.id));
+  await b.node('#recipe-cards').onclick({target:{closest:()=>({dataset:{delete:recipe.id}})}});b.node('#delete-recipe-password').value=TEST_MASTER;await b.node('#confirm-delete').onclick();await a.sync.refresh();assert.ok(!a.app.getRecipes().some(r=>r.id===recipe.id));
   // Reloading on another computer reads the same database; an independent office is separate.
   const reload=browser(fetch);await reload.connect(room);assert.equal(reload.app.getMaterials().find(m=>m.id==='m12').price,10);
   const different=(await request('/api/workshops','POST',{name:'Outra'})).data;await reload.connect(different);assert.equal(reload.app.getMaterials().find(m=>m.id==='m12').price,5);
@@ -137,4 +138,49 @@ test('old browser recipes can be shared explicitly without overwriting the works
   const local=a.app.getLegacyCatalog();local.recipes.push({...structuredClone(local.recipes[0]),id:'legacy-custom',name:'Receita antiga'});local.materials.find(m=>m.id==='m12').price=999;
   const b=browser(fetch,local);await b.connect(room);assert.equal(b.app.getMaterials().find(m=>m.id==='m12').price,5);assert.ok(!b.app.getRecipes().some(r=>r.name==='Receita antiga'));
   await b.node('#share-browser-recipes').onclick();await a.sync.refresh();assert.ok(a.app.getRecipes().some(r=>r.name==='Receita antiga'));assert.equal(a.app.getMaterials().find(m=>m.id==='m12').price,5);assert.equal(b.storage.get('forja-mercadores-v1'),JSON.stringify(local));
+});
+
+test('master password protects recipe deletion in the API and leaves ordinary editing available',async()=>{
+  const {request}=fixture(),room=(await request('/api/workshops','POST',{name:'Oficina'})).data;
+  const first=(await request('/api/catalog','POST',{actor:'Kai',catalog},room)).data;
+  const next=structuredClone(first.catalog);next.recipes=next.recipes.filter(r=>r.id!=='ingot');
+  for(const masterPassword of [undefined,'incorreta']){
+    assert.equal((await request('/api/catalog','PATCH',{version:1,actor:'Kai',catalog:next,masterPassword},room)).status,403);
+    assert.equal((await request('/api/catalog','GET',null,room)).data.version,1);
+  }
+  let result=await request('/api/catalog','PATCH',{version:1,actor:'Kai',catalog:next,masterPassword:TEST_MASTER},room);assert.equal(result.status,200);assert.equal(result.data.catalog.recipes.length,1);assert.ok(!JSON.stringify(result.data).includes(TEST_MASTER));
+  next.materials[0].price=10;result=await request('/api/catalog','PATCH',{version:2,actor:'Eivor',catalog:next},room);assert.equal(result.status,200);assert.equal(result.data.catalog.materials[1].price,35);
+});
+
+test('deleting one of two identically named offices requires the master password and preserves the other and historical data',async()=>{
+  const {request,sqlite}=fixture(),a=(await request('/api/workshops','POST',{name:'Rosa de Ferro'})).data,b=(await request('/api/workshops','POST',{name:'Rosa de Ferro'})).data;
+  await request('/api/catalog','POST',{actor:'Kai',catalog},a);
+  await request('/api/orders','POST',{id:'history-001',customer:'Cliente',createdBy:'Kai',items:[{name:'Espada',qty:1,unitPrice:100}]},a);
+  const input={actor:'Kai',confirmationName:'Rosa de Ferro',masterPassword:TEST_MASTER};
+  assert.equal((await request('/api/workshops/'+a.id,'DELETE',input)).status,401);
+  assert.equal((await request('/api/workshops/'+a.id,'DELETE',{...input,masterPassword:'errada'},a)).status,403);
+  assert.equal((await request('/api/workshops/'+a.id,'DELETE',{...input,confirmationName:'Rosa'},a)).status,400);
+  assert.equal((await request('/api/workshops/'+a.id,'DELETE',input,b)).status,403);
+  assert.equal((await request('/api/workshops')).data.workshops.length,2);
+  assert.equal((await request('/api/workshops/'+a.id,'DELETE',input,a)).status,200);
+  const listed=(await request('/api/workshops')).data.workshops;assert.equal(listed.length,1);assert.equal(listed[0].id,b.id);
+  assert.equal((await request('/api/workshops/'+a.id+'/join','POST')).status,404);
+  assert.equal((await request('/api/catalog','GET',null,a)).status,401);
+  assert.equal((await request('/api/orders','GET',null,b)).status,200);
+  assert.equal(sqlite.prepare('SELECT count(*) AS n FROM orders WHERE workshop_id = ?').get(a.id).n,1);
+  assert.equal(sqlite.prepare('SELECT count(*) AS n FROM catalogs WHERE workshop_id = ?').get(a.id).n,1);
+  const removed=sqlite.prepare('SELECT * FROM workshops WHERE id = ?').get(a.id);assert.equal(removed.deleted_by,'Kai');assert.ok(removed.deleted_at);
+});
+
+test('the interface requires passwords and removes only the selected workshop, including after reload',async()=>{
+  const {request,fetch}=fixture(),a=(await request('/api/workshops','POST',{name:'Rosa de Ferro'})).data,b=(await request('/api/workshops','POST',{name:'Rosa de Ferro'})).data;
+  const ui=browser(fetch);await loadOrders(ui);ui.node('#smith-name').value='Kai';
+  const click=dataset=>ui.node('#workshop-list').onclick({target:{closest:()=>({dataset})}});
+  await click({enterWorkshop:a.id});
+  click({deleteWorkshop:a.id});assert.ok(ui.node('#delete-workshop-info').textContent.includes(a.id.slice(0,8)));assert.equal(ui.node('#confirm-delete-workshop').disabled,true);
+  ui.node('#delete-workshop-confirmation').value='Rosa de Ferro';ui.node('#delete-workshop-password').value='errada';await ui.node('#workshop-delete-form').onsubmit({preventDefault(){}});assert.match(ui.node('#toast').textContent,/Senha master incorreta/);assert.equal(ui.node('#delete-workshop-password').value,'');assert.equal((await request('/api/workshops')).data.workshops.length,2);
+  ui.node('#delete-workshop-password').value=TEST_MASTER;await ui.node('#workshop-delete-form').onsubmit({preventDefault(){}});assert.equal(ui.storage.get('forja-orders-workshop-v1'),undefined);assert.ok(!ui.node('#workshop-list').innerHTML.includes(a.id));assert.ok(ui.node('#workshop-list').innerHTML.includes(b.id));assert.equal(ui.node('#recipe-name').value,'');
+  const reload=browser(fetch,null,ui.storage);await loadOrders(reload);assert.ok(!reload.node('#workshop-list').innerHTML.includes(a.id));await reload.node('#workshop-list').onclick({target:{closest:()=>({dataset:{enterWorkshop:b.id}})}});
+  reload.node('#smith-name').value='Kai';const recipe=reload.app.getRecipes()[0];await reload.node('#recipe-cards').onclick({target:{closest:()=>({dataset:{delete:recipe.id}})}});await reload.node('#confirm-delete').onclick();assert.match(reload.node('#toast').textContent,/senha master/);assert.ok(reload.app.getRecipes().some(r=>r.id===recipe.id));
+  reload.node('#delete-recipe-password').value=TEST_MASTER;await reload.node('#confirm-delete').onclick();assert.ok(!reload.app.getRecipes().some(r=>r.id===recipe.id));assert.equal(reload.node('#delete-recipe-password').value,'');assert.ok([...reload.storage.values()].every(value=>!value.includes(TEST_MASTER)));
 });

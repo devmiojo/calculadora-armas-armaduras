@@ -22,7 +22,7 @@ Uma encomenda registra cliente, itens livres, quantidades, valores e observaçõ
 
 Os status são **Pendente**, **Em produção**, **Pronta (craftada)** e **Entregue ao cliente**. **Assumir** registra quem começou a produção. Cada item novo pode receber materiais, quantidades, produção por receita, mão de obra, lucro e custos fixos. O sistema calcula seu preço e o total do pedido. A receita fica compartilhada junto do item e pode ser salva também como nova receita no catálogo compartilhado. **Marcar item como feito** registra quem produziu cada item; quando todos estão feitos, a encomenda fica **Pronta (craftada)**. Só então **Entregar ao cliente** registra a entrega, com responsável e data separados da produção. O histórico permanece disponível ao reabrir uma encomenda. Os valores acordados ficam registrados no pedido, mesmo se o catálogo mudar.
 
-Veja [backend/README.md](backend/README.md) para detalhes do serviço compartilhado e hospedagem alternativa. O serviço inicial de revisão é privado; precisa ser liberado para os ferreiros junto da publicação no GitHub Pages.
+Veja [backend/README.md](backend/README.md) para detalhes do serviço compartilhado e hospedagem alternativa. O site está publicado em https://devmiojo.github.io/calculadora-armas-armaduras/ e usa o serviço compartilhado configurado em `docs/orders-config.js`.
 
 ## Publicar no GitHub Pages
 
@@ -45,3 +45,7 @@ node --test tests/pricing.test.cjs tests/orders.test.mjs tests/catalog.test.mjs
 ```
 
 Os testes verificam os recálculos em cadeia, a persistência de encomendas, itens livres, entregas, histórico, concorrência e separação entre oficinas.
+
+## Exclusões
+
+**Excluir** na lista de oficinas e nas receitas exige uma senha master validada pelo servidor. A senha é configurada como segredo de produção `FORGE_MASTER_PASSWORD`; ela não é publicada no frontend nem lembrada no navegador. Excluir uma oficina exige também seu nome exato e afeta somente o identificador selecionado, mesmo quando existem nomes iguais. A oficina sai da lista e deixa de ser acessível; os registros são preservados no banco. A exclusão de uma receita mantém os materiais e os valores já combinados nas encomendas.

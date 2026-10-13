@@ -58,3 +58,7 @@ A tabela `catalogs` guarda um documento por oficina, versão, autor e data da ú
 Para atualizar um serviço alternativo que já usa `schema.sql`, aplique somente `migrations/0001_shared_catalog.sql` à base existente antes de publicar esta API. Não recrie as tabelas de encomendas.
 
 Para atualizar um serviço alternativo existente, aplique `migrations/0002_workshop_directory.sql`. A migração acrescenta `workshop_access` e preserva oficinas, encomendas e catálogos existentes. A listagem expõe somente identificador, nome e data; nunca retorna chaves ou hashes. A entrada pela lista é aberta aos visitantes, conforme o fluxo do produto.
+
+## Senha master e exclusões
+
+Configure `FORGE_MASTER_PASSWORD` como segredo do Worker (em Sites, segredo do ambiente de produção; em hospedagem alternativa, `wrangler secret put FORGE_MASTER_PASSWORD`). Nunca inclua o valor no repositório ou no frontend. `DELETE /api/workshops/:id` exige chave da oficina, `actor`, `confirmationName` e `masterPassword`. A exclusão registra `deleted_at` e `deleted_by`, oculta a oficina e bloqueia seus acessos, preservando os dados. `PATCH /api/catalog` também exige `masterPassword` sempre que remove identificadores de receitas ou materiais; alteração comum continua sem senha. Sem segredo configurado, exclusões são recusadas. Aplique `migrations/0003_master_deletion.sql` para atualizar um serviço alternativo existente.
