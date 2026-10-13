@@ -3,6 +3,7 @@ import {validateCatalog} from './catalog-model.mjs';
 
 const ALLOWED_ORIGINS=new Set(['https://devmiojo.github.io','https://forja-encomendas.lannahechee.chatgpt.site']);
 const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');
+const accessToken=()=>[...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const json=(data,status=200,origin='')=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Vary':'Origin',...(origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Credentials':'true'}:{})}});
 const decode=row=>({...normalizeOrder(JSON.parse(row.document)),id:row.id,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at});
 async function body(request,limit=65536){
@@ -14,7 +15,8 @@ async function workshop(request,db){
   const id=request.headers.get('X-Workshop-Id'),authorization=request.headers.get('Authorization')||'';
   const token=authorization.startsWith('Bearer ')?authorization.slice(7):'';
   if(!id||!token||token.length>200)throw new OrderError('Entre na oficina pelo link compartilhado.',401);
-  const room=await db.prepare('SELECT id, name FROM workshops WHERE id = ? AND token_hash = ?').bind(id,await hash(token)).first();
+  const tokenHash=await hash(token);
+  const room=await db.prepare('SELECT id, name FROM workshops WHERE id = ? AND token_hash = ?').bind(id,tokenHash).first()||await db.prepare('SELECT w.id, w.name FROM workshops w JOIN workshop_access a ON a.workshop_id = w.id WHERE w.id = ? AND a.token_hash = ?').bind(id,tokenHash).first();
   if(!room)throw new OrderError('Link de oficina inválido.',401);return room;
 }
 export async function handleOrders(request,db){
@@ -29,10 +31,22 @@ export async function handleOrders(request,db){
       await db.prepare('SELECT id FROM orders LIMIT 1').first();
       return json({ok:true},200,origin);
     }
+    if(path==='/api/workshops'&&request.method==='GET'&&!request.headers.get('X-Workshop-Id')){
+      const rows=await db.prepare('SELECT id, name, created_at FROM workshops ORDER BY name COLLATE NOCASE, id LIMIT 5000').all();
+      return json({workshops:rows.results.map(row=>({id:row.id,name:row.name,createdAt:row.created_at}))},200,origin);
+    }
+    const entry=path.match(/^\/api\/workshops\/([a-zA-Z0-9_-]{8,80})\/join$/);
+    if(entry&&request.method==='POST'){
+      const room=await db.prepare('SELECT id, name FROM workshops WHERE id = ?').bind(entry[1]).first();
+      if(!room)throw new OrderError('Oficina não encontrada. Atualize a lista.',404);
+      const token=accessToken();
+      await db.prepare('INSERT INTO workshop_access (token_hash, workshop_id, created_at) VALUES (?, ?, ?)').bind(await hash(token),room.id,new Date().toISOString()).run();
+      return json({...room,key:token},200,origin);
+    }
     if(path==='/api/workshops'&&request.method==='POST'){
       const input=await body(request),name=typeof input.name==='string'?input.name.trim():'';
       if(!name||name.length>120)throw new OrderError('Dê um nome à oficina com até 120 caracteres.');
-      const id=crypto.randomUUID(),token=[...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join(''),now=new Date().toISOString();
+      const id=crypto.randomUUID(),token=accessToken(),now=new Date().toISOString();
       await db.prepare('INSERT INTO workshops (id, name, token_hash, created_at) VALUES (?, ?, ?, ?)').bind(id,name,await hash(token),now).run();
       return json({id,name,key:token},201,origin);
     }

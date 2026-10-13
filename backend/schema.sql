@@ -24,3 +24,8 @@ CREATE TABLE `catalogs` (
   `updated_by` text NOT NULL,
   `updated_at` text NOT NULL
 );
+CREATE TABLE `workshop_access` (
+  `token_hash` text PRIMARY KEY NOT NULL,
+  `workshop_id` text NOT NULL REFERENCES `workshops`(`id`),
+  `created_at` text NOT NULL
+);

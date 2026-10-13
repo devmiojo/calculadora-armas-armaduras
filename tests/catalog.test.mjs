@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {handleOrders} from '../backend/orders-api.mjs';
 import {validateCatalog} from '../backend/catalog-model.mjs';
+import * as orderModel from '../docs/order-model.mjs';
 
 const file=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
 function fixture(){
@@ -45,10 +46,10 @@ test('catalog authorization, validation and price cycles never corrupt saved val
   const context=vm.createContext({window:{}});vm.runInContext(file('docs/pricing.js'),context);
   const canonical=validateCatalog(catalog),browser=structuredClone(catalog);context.window.FORGE_PRICING.recalculate(browser);assert.deepEqual(canonical,browser);
 });
-function browser(fetch,legacy){
-  const nodes=new Map(),storage=new Map();if(legacy)storage.set('forja-mercadores-v1',JSON.stringify(legacy));
+function browser(fetch,legacy,remembered){
+  const nodes=new Map(),storage=new Map(remembered);if(legacy)storage.set('forja-mercadores-v1',JSON.stringify(legacy));
   const node=selector=>{if(!nodes.has(selector))nodes.set(selector,{value:'',hidden:false,innerHTML:'',textContent:'',handlers:{},classList:{add(){},remove(){},toggle(){}},addEventListener(type,fn){this.handlers[type]=fn},showModal(){this.open=true},close(){this.open=false},focus(){}});return nodes.get(selector)};
-  const context=vm.createContext({structuredClone,crypto,setTimeout:()=>0,setInterval:()=>0,clearTimeout(){},Blob,URL,AbortSignal,document:{hidden:false,querySelector:node,querySelectorAll:()=>[],addEventListener(){}},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},window:{matchMedia:()=>({matches:false}),scrollTo(){}},fetch});
+  const context=vm.createContext({structuredClone,crypto,setTimeout:()=>0,setInterval:()=>0,clearTimeout(){},Blob,URL,AbortSignal,TextEncoder,TextDecoder,btoa,atob,location:{hash:'',pathname:'/forja/index.html',search:''},history:{replaceState(){}},navigator:{clipboard:{writeText:async()=>{}}},document:{hidden:false,querySelector:node,querySelectorAll:()=>[],addEventListener(){}},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},window:{matchMedia:()=>({matches:false}),scrollTo(){}},fetch});
   for(const name of ['data.js','search.js','pricing.js','app.js','orders-config.js','catalog-sync.js'])vm.runInContext(file('docs/'+name),context);
   const app=context.window.FORJA_APP,sync=context.window.FORJA_CATALOG;
   const connect=room=>sync.connect({room,initialActor:'Kai',actor:()=>node('#smith-name').value||'Kai',api:async(path,options={})=>{const response=await context.fetch(context.window.FORGE_ORDERS_API+path,{...options,headers:{'Content-Type':'application/json','X-Workshop-Id':room.id,Authorization:'Bearer '+room.key}});const data=await response.json();if(!response.ok)throw Object.assign(Error(data.error),{status:response.status});return data}});
@@ -84,6 +85,42 @@ test('two computers see recipe edits, price changes and deletions; stale drafts 
   // Reloading on another computer reads the same database; an independent office is separate.
   const reload=browser(fetch);await reload.connect(room);assert.equal(reload.app.getMaterials().find(m=>m.id==='m12').price,10);
   const different=(await request('/api/workshops','POST',{name:'Outra'})).data;await reload.connect(different);assert.equal(reload.app.getMaterials().find(m=>m.id==='m12').price,5);
+});
+async function loadOrders(b){
+  b.context.ORDER_MODEL=orderModel;
+  await vm.runInContext('(async()=>{const {ORDER_STATUSES,validateItems,orderTotal,validateRecipe,recipeQuote}=ORDER_MODEL;'+file('docs/orders.mjs').replace(/^import[^\n]+\n/,'')+'})()',b.context);
+  for(let i=0;i<100;i++){
+    if(b.node('#workshops-sync').textContent.startsWith('Oficinas salvas')&&(!b.storage.get('forja-orders-workshop-v1')||(b.sync.getVersion()&&b.node('#orders-sync').textContent.startsWith('Lista compartilhada')))){await new Promise(resolve=>setImmediate(resolve));return;}
+    await new Promise(resolve=>setImmediate(resolve));
+  }
+  throw Error('Oficinas não carregaram.');
+}
+test('workshops are listed across computers and can be entered without a shared link',async()=>{
+  const {request,fetch}=fixture(),a=browser(fetch);await loadOrders(a);
+  a.node('#new-workshop-name').value='Rosa de Ferro';a.node('#smith-name').value='Kai';
+  await a.node('#create-workshop-form').onsubmit({preventDefault(){}});
+  const room=JSON.parse(a.storage.get('forja-orders-workshop-v1'));
+  assert.ok(a.node('#workshop-list').innerHTML.includes('Rosa de Ferro'));assert.ok(a.node('#workshop-list').innerHTML.includes('Oficina atual'));
+  const list=(await request('/api/workshops')).data.workshops;assert.equal(list.length,1);assert.equal(list[0].id,room.id);assert.ok(!('key' in list[0]));assert.ok(!('token_hash' in list[0]));
+  const b=browser(fetch);await loadOrders(b);assert.ok(b.node('#workshop-list').innerHTML.includes('Rosa de Ferro'));assert.equal(b.storage.get('forja-orders-workshop-v1'),undefined);
+  await b.node('#workshop-list').onclick({target:{closest:()=>({dataset:{enterWorkshop:room.id}})}});
+  const access=JSON.parse(b.storage.get('forja-orders-workshop-v1'));assert.equal(access.id,room.id);assert.notEqual(access.key,room.key);assert.ok(b.app.getRecipes().length>0);
+  assert.equal((await request('/api/catalog','GET',null,access)).status,200);
+  assert.equal((await request('/api/workshops/unknown-office/join','POST')).status,404);
+  const other=(await request('/api/workshops','POST',{name:'Outra oficina'})).data;
+  assert.equal((await request('/api/catalog','GET',null,{...access,id:other.id})).status,401);
+  const reload=browser(fetch,null,b.storage);await loadOrders(reload);assert.ok(reload.node('#workshop-list').innerHTML.includes('Rosa de Ferro'));
+  reload.node('#change-workshop').onclick();assert.equal(reload.node('#orders-connect').hidden,false);assert.ok(reload.node('#workshop-list').innerHTML.includes('Entrar'));
+  await reload.node('#workshop-list').onclick({target:{closest:()=>({dataset:{enterWorkshop:room.id}})}});assert.equal(JSON.parse(reload.storage.get('forja-orders-workshop-v1')).id,room.id);
+});
+test('pricing starts empty on first visit, reconnect and workshop changes; loading a saved recipe remains explicit',async()=>{
+  const {request,fetch}=fixture(),b=browser(fetch);
+  const empty=()=>{assert.equal(b.node('#recipe-name').value,'');assert.equal(vm.runInContext('draft.lines.length',b.context),0);assert.equal(b.node('#sale-price').textContent,'0')};
+  empty();const a=(await request('/api/workshops','POST',{name:'A'})).data;await b.connect(a);empty();
+  const armor=b.app.getRecipes().find(r=>r.name==='Armadura de aço');assert.ok(armor);
+  await b.node('#recipe-cards').onclick({target:{closest:()=>({dataset:{open:armor.id}})}});assert.equal(b.node('#recipe-name').value,'Armadura de aço');assert.ok(vm.runInContext('draft.lines.length',b.context)>0);
+  const other=(await request('/api/workshops','POST',{name:'B'})).data;await b.connect(other);empty();await b.connect(a);empty();
+  const fresh=browser(fetch);await fresh.connect(a);assert.equal(fresh.node('#recipe-name').value,'');assert.ok(fresh.app.getRecipes().some(r=>r.id===armor.id));
 });
 test('a delayed background read cannot restore an older catalog after saving',async()=>{
   const {request,fetch}=fixture(),room=(await request('/api/workshops','POST',{name:'Rosa'})).data,b=browser(fetch);await b.connect(room);

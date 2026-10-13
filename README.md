@@ -10,13 +10,13 @@ Para cobrar somente 10–15% de mão de obra, use esse percentual no campo **Mã
 
 Referências atualizadas de Alvor: aço 38, corundum 66, ferro 15 e tiras 5 septims. Lenha usa o valor definido de 5. Carvão é calculado a partir de 3 lenhas + 15% de mão de obra, arredondado para cima: 18 septims.
 
-Receitas, materiais e preços ficam em um catálogo compartilhado por oficina no banco D1. Todos que entram pelo mesmo link podem criar, modificar, duplicar e excluir receitas e editar preços. O catálogo atualiza automaticamente a cada 20 segundos e ao voltar à página; **Atualizar catálogo** permite buscar as mudanças imediatamente. Cada alteração registra nome e data e usa uma versão para impedir que uma edição simultânea sobrescreva outra. Rascunhos em edição são preservados quando há conflito; atualize e reabra o registro antes de tentar novamente.
+Receitas, materiais e preços ficam em um catálogo compartilhado por oficina no banco D1. Todos que entram pelo mesmo link podem criar, modificar, duplicar e excluir receitas e editar preços. A tela **Precificar** inicia vazia, inclusive ao trocar de oficina. Use **Abrir** em uma receita salva para carregá-la na calculadora. O catálogo atualiza automaticamente a cada 20 segundos e ao voltar à página; **Atualizar catálogo** permite buscar as mudanças imediatamente. Cada alteração registra nome e data e usa uma versão para impedir que uma edição simultânea sobrescreva outra. Rascunhos em edição são preservados quando há conflito; atualize e reabra o registro antes de tentar novamente.
 
 O primeiro acesso inicializa o catálogo vazio com os registros antigos daquele navegador. Nos demais computadores, **Compartilhar receitas antigas deste navegador** importa apenas registros novos, sem substituir receitas ou preços já existentes. O armazenamento antigo permanece intacto. **Exportar backup** exporta o catálogo atual; **Importar backup** compartilha os registros novos com a oficina. Sem oficina ou sem conexão, a calculadora permite consultar e simular, mas não confirma salvamentos compartilhados.
 
 ## Encomendas
 
-Informe seu nome de personagem, crie a oficina uma vez e compartilhe seu link com os ferreiros. A oficina usa um banco compartilhado: todos os participantes veem as mesmas encomendas, independentemente do computador.
+Informe seu nome de personagem e crie a oficina uma vez. Ela permanece na lista **Oficinas criadas**, disponível em qualquer computador. Os jogadores entram pelo botão **Entrar** junto ao nome, sem precisar de link. O link antigo continua funcionando como atalho. A oficina usa um banco compartilhado: todos os participantes veem as mesmas encomendas, independentemente do computador.
 
 Uma encomenda registra cliente, itens livres, quantidades, valores e observações. Itens ainda não cadastrados são aceitos. Selecione uma receita para preencher seu preço ou informe um valor manual; preços em branco ficam **a combinar**.
 

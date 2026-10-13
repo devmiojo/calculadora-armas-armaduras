@@ -7,14 +7,14 @@ O serviço preparado para esta aplicação é `https://forja-encomendas.lannahec
 ## Uso
 
 1. Em **Encomendas**, informe seu nome de personagem.
-2. O responsável cria a oficina uma vez e copia **Compartilhar oficina**.
+2. O responsável cria a oficina uma vez; ela aparece em **Oficinas criadas**.
 3. Os ferreiros abrem esse link para acessar a mesma lista.
 4. Cadastre cliente, itens livres, quantidades, valores e observações. Receitas existentes podem preencher o preço; itens sem receita também são aceitos.
 5. O ferreiro pode usar **Definir materiais e calcular** em cada item livre: busca ingredientes no catálogo ou informa materiais livres, quantidades e preços. A mão de obra e o orçamento são calculados automaticamente.
 6. **Marcar item como feito** registra quem craftou aquele item; ferreiros diferentes podem fazer itens diferentes. Quando todos estão feitos, o pedido fica **Pronto (craftado)**, ainda sem entrega.
 7. Use **Entregar ao cliente** depois de pronto. Quem produziu permanece registrado e a entrega recebe responsável e data próprios.
 
-O link autoriza acesso à oficina e é transportado no fragmento da URL. A chave é armazenada no navegador dos participantes; o banco guarda somente seu hash. A API exige a chave em cada leitura ou alteração de encomendas. O nome do ferreiro é informado manualmente para o RP.
+As oficinas são abertas aos visitantes do site e listadas pelo servidor. **Entrar** emite uma chave de acesso para a oficina escolhida; a tabela `workshop_access` guarda somente o hash dessa chave. Links anteriores continuam válidos como atalhos e são transportados no fragmento da URL. A chave é armazenada no navegador dos participantes; o banco guarda somente seu hash. A API exige a chave em cada leitura ou alteração de encomendas. O nome do ferreiro é informado manualmente para o RP.
 
 Os valores combinados de uma encomenda são registrados como orçamento. Alterar os preços do catálogo recalcula as receitas; encomendas já registradas mantêm os valores acordados até uma edição explícita.
 
@@ -27,6 +27,8 @@ As atualizações usam versões para impedir que duas pessoas sobrescrevam o mes
 | Consultar catálogo | `GET /api/catalog` |
 | Inicializar catálogo uma vez | `POST /api/catalog` |
 | Alterar catálogo com versão | `PATCH /api/catalog` |
+| Listar oficinas | `GET /api/workshops` sem chave |
+| Entrar pelo nome | `POST /api/workshops/:id/join` |
 | Criar oficina | `POST /api/workshops` |
 | Verificar acesso | `GET /api/workshops` |
 | Listar encomendas | `GET /api/orders` |
@@ -54,3 +56,5 @@ Os testes verificam persistência, itens livres, valores a combinar, entrega, au
 A tabela `catalogs` guarda um documento por oficina, versão, autor e data da última alteração. A API valida materiais e receitas e recalcula a cadeia de preços no servidor. A inicialização é idempotente e não substitui um catálogo existente. Alterações exigem a versão atual e usam UPDATE condicional; conflitos retornam 409 sem sobrescrever dados. Orçamentos já acordados nas encomendas preservam seu histórico, mesmo quando o catálogo muda. A migração incremental no Site cria somente a nova tabela.
 
 Para atualizar um serviço alternativo que já usa `schema.sql`, aplique somente `migrations/0001_shared_catalog.sql` à base existente antes de publicar esta API. Não recrie as tabelas de encomendas.
+
+Para atualizar um serviço alternativo existente, aplique `migrations/0002_workshop_directory.sql`. A migração acrescenta `workshop_access` e preserva oficinas, encomendas e catálogos existentes. A listagem expõe somente identificador, nome e data; nunca retorna chaves ou hashes. A entrada pela lista é aberta aos visitantes, conforme o fluxo do produto.
