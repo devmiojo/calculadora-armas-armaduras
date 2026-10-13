@@ -27,7 +27,7 @@ window.FORJA_CATALOG=(()=>{
   async function save(catalog,expected=version,masterPassword){
     if(!context||!ready){app.switchView('orders');throw Error('Entre na oficina em Encomendas para compartilhar receitas e preços.')}
     if(writing)throw Error('Aguarde a alteração anterior terminar.');
-    const actor=context.actor(),ticket=generation,active=context;writing=true;status('Salvando na oficina…');
+    const actor=masterPassword?undefined:context.actor(),ticket=generation,active=context;writing=true;status('Salvando na oficina…');
     try{
       const data=await active.api('/api/catalog',{method:'PATCH',body:JSON.stringify({version:expected,catalog,actor,...(masterPassword?{masterPassword}:{})})});
       if(ticket!==generation)throw Error('A oficina mudou durante o salvamento. Volte à oficina anterior para conferir.');

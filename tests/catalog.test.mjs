@@ -202,3 +202,23 @@ test('a price deletion confirmation cannot act on another workshop after switchi
   const {request,fetch}=fixture(),a=(await request('/api/workshops','POST',{name:'A'})).data,b=(await request('/api/workshops','POST',{name:'B'})).data,ui=browser(fetch);await ui.connect(a);
   ui.node('#catalog-rows').onclick({target:{closest:()=>({dataset:{deleteMaterial:'m12'}})}});await ui.connect(b);ui.node('#delete-recipe-password').value=TEST_MASTER;await ui.node('#confirm-delete').onclick();assert.match(ui.node('#toast').textContent,/oficina ou o registro mudou/);assert.ok(ui.app.getMaterials().some(m=>m.id==='m12'));
 });
+
+test('master-authorized deletions accept no smith name while ordinary edits still require one',async()=>{
+  const {request,sqlite}=fixture(),room=(await request('/api/workshops','POST',{name:'Oficina'})).data;
+  const initial=(await request('/api/catalog','POST',{actor:'Kai',catalog},room)).data;
+  const edited=structuredClone(initial.catalog);edited.materials[0].price=10;
+  for(const masterPassword of [undefined,TEST_MASTER])assert.equal((await request('/api/catalog','PATCH',{version:1,catalog:edited,masterPassword},room)).status,400);
+  const reduced=structuredClone(initial.catalog);reduced.recipes=reduced.recipes.filter(r=>r.id!=='ingot');
+  assert.equal((await request('/api/catalog','PATCH',{version:1,catalog:reduced,masterPassword:'errada'},room)).status,403);
+  const removed=await request('/api/catalog','PATCH',{version:1,catalog:reduced,masterPassword:TEST_MASTER},room);assert.equal(removed.status,200);assert.equal(removed.data.updatedBy,'Administrador (senha master)');
+  assert.equal((await request('/api/workshops/'+room.id,'DELETE',{confirmationName:room.name,masterPassword:TEST_MASTER},room)).status,200);assert.equal(sqlite.prepare('SELECT deleted_by FROM workshops WHERE id = ?').get(room.id).deleted_by,'Administrador (senha master)');
+});
+
+test('blank smith name does not block recipe, catalog item or workshop deletion in the interface',async()=>{
+  const {request,fetch}=fixture(),room=(await request('/api/workshops','POST',{name:'Rosa de Ferro'})).data,ui=browser(fetch);await loadOrders(ui);
+  await ui.node('#workshop-list').onclick({target:{closest:()=>({dataset:{enterWorkshop:room.id}})}});assert.equal(ui.node('#smith-name').value,'');
+  ui.node('#new-order').onclick();assert.match(ui.node('#toast').textContent,/Informe seu nome de ferreiro/);
+  const recipe=ui.app.getRecipes().find(r=>r.name==='Armadura de aço');await ui.node('#recipe-cards').onclick({target:{closest:()=>({dataset:{delete:recipe.id}})}});ui.node('#delete-recipe-password').value=TEST_MASTER;await ui.node('#confirm-delete').onclick();assert.ok(!ui.app.getRecipes().some(r=>r.id===recipe.id));
+  ui.node('#catalog-rows').onclick({target:{closest:()=>({dataset:{deleteMaterial:'m12'}})}});ui.node('#delete-recipe-password').value=TEST_MASTER;await ui.node('#confirm-delete').onclick();assert.ok(!ui.app.getMaterials().some(m=>m.id==='m12'));
+  ui.node('#workshop-list').onclick({target:{closest:()=>({dataset:{deleteWorkshop:room.id}})}});ui.node('#delete-workshop-confirmation').value=room.name;ui.node('#delete-workshop-password').value=TEST_MASTER;await ui.node('#workshop-delete-form').onsubmit({preventDefault(){}});assert.equal((await request('/api/workshops')).data.workshops.length,0);assert.equal(ui.node('#smith-name').value,'');
+});

@@ -61,8 +61,8 @@ export async function handleOrders(request,db,masterPassword){
       if(removal[1]!==room.id)throw new OrderError('Acesso inválido para esta oficina.',403);
       const input=await body(request);await requireMaster(input);
       if(input.confirmationName!==room.name)throw new OrderError('Digite exatamente o nome da oficina para confirmar.');
-      const actor=typeof input.actor==='string'?input.actor.trim():'';
-      if(!actor||actor.length>120)throw new OrderError('Informe seu nome antes de excluir a oficina.');
+      const actor=(typeof input.actor==='string'?input.actor.trim():'')||'Administrador (senha master)';
+      if(actor.length>120)throw new OrderError('Nome inválido.');
       const result=await db.prepare('UPDATE workshops SET deleted_at = ?, deleted_by = ? WHERE id = ? AND deleted_at IS NULL').bind(new Date().toISOString(),actor,room.id).run();
       if(!result.meta.changes)throw new OrderError('Esta oficina já foi excluída.',409);
       return json({deleted:true,id:room.id},200,origin);
@@ -72,17 +72,20 @@ export async function handleOrders(request,db,masterPassword){
       const decodeCatalog=row=>row?{catalog:JSON.parse(row.document),version:row.version,updatedBy:row.updated_by,updatedAt:row.updated_at}:{catalog:null,version:0};
       if(request.method==='GET')return json(decodeCatalog(await read()),200,origin);
       if(['POST','PATCH'].includes(request.method)){
-        const input=await body(request,2*1024*1024),actor=typeof input.actor==='string'?input.actor.trim():'';
-        if(!actor||actor.length>120)throw new OrderError('Informe seu nome antes de alterar o catálogo.');
+        const input=await body(request,2*1024*1024);let actor=typeof input.actor==='string'?input.actor.trim():'';
+        if(actor.length>120)throw new OrderError('Nome inválido.');
         const catalog=validateCatalog(input.catalog),now=new Date().toISOString();
         if(request.method==='POST'){
+          if(!actor)throw new OrderError('Informe seu nome antes de alterar o catálogo.');
           await db.prepare('INSERT INTO catalogs (workshop_id, document, version, updated_by, updated_at) VALUES (?, ?, 1, ?, ?) ON CONFLICT(workshop_id) DO NOTHING').bind(room.id,JSON.stringify(catalog),actor,now).run();
         }else{
           if(!Number.isInteger(input.version)||input.version<1)throw new OrderError('Versão do catálogo inválida.');
           const current=await read();
           if(!current||current.version!==input.version)throw new OrderError('Outro jogador alterou o catálogo. Atualize antes de salvar.',409);
           const previous=JSON.parse(current.document),nextIds=new Set(catalog.recipes.map(r=>r.id)),materialIds=new Set(catalog.materials.map(m=>m.id));
-          if(previous.recipes.some(r=>!nextIds.has(r.id))||previous.materials.some(m=>!materialIds.has(m.id)))await requireMaster(input);
+          const deleting=previous.recipes.some(r=>!nextIds.has(r.id))||previous.materials.some(m=>!materialIds.has(m.id));
+          if(deleting){await requireMaster(input);actor=actor||'Administrador (senha master)';}
+          else if(!actor)throw new OrderError('Informe seu nome antes de alterar o catálogo.');
           const result=await db.prepare('UPDATE catalogs SET document = ?, version = version + 1, updated_by = ?, updated_at = ? WHERE workshop_id = ? AND version = ?').bind(JSON.stringify(catalog),actor,now,room.id,input.version).run();
           if(!result.meta.changes)throw new OrderError('Outro jogador alterou o catálogo. Atualize e reabra a receita ou material antes de salvar. Seu rascunho foi preservado.',409);
         }
