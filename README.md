@@ -16,7 +16,7 @@ O primeiro acesso inicializa o catálogo vazio com os registros antigos daquele 
 
 ## Encomendas
 
-Informe seu nome de personagem e crie a oficina uma vez. Ela permanece na lista **Oficinas criadas**, disponível em qualquer computador. Os jogadores entram pelo botão **Entrar** junto ao nome, sem precisar de link. O link antigo continua funcionando como atalho. A oficina usa um banco compartilhado: todos os participantes veem as mesmas encomendas, independentemente do computador.
+Crie a oficina uma vez. O nome do personagem é opcional. Ela permanece na lista **Oficinas criadas**, disponível em qualquer computador. Os jogadores entram pelo botão **Entrar** junto ao nome, sem precisar de link. O link antigo continua funcionando como atalho. A oficina usa um banco compartilhado: todos os participantes veem as mesmas encomendas, independentemente do computador.
 
 Uma encomenda registra cliente, itens livres, quantidades, valores e observações. Itens ainda não cadastrados são aceitos. Selecione uma receita para preencher seu preço ou informe um valor manual; preços em branco ficam **a combinar**.
 
@@ -53,3 +53,5 @@ Os testes verificam os recálculos em cadeia, a persistência de encomendas, ite
 O catálogo de preços também oferece **Excluir** por item/vendedor, protegido pela mesma senha master. A confirmação identifica o nome, vendedor e preço. Receitas dependentes mantêm o último valor do ingrediente como preço próprio; outras ofertas do mesmo item e encomendas já registradas são preservadas.
 
 Exclusões de oficinas, receitas e itens do catálogo não exigem o nome do ferreiro. A senha master continua obrigatória, e exclusões sem nome são registradas como **Administrador (senha master)**. A confirmação do nome da oficina permanece para identificar o alvo correto.
+
+Nenhum salvamento exige nome do ferreiro: receitas, materiais, preços e encomendas podem ser criados e alterados sem preencher esse campo. Produção e entrega também aceitam nome vazio; o histórico registra **Não informado**. Se preenchido, o nome informado continua sendo registrado.

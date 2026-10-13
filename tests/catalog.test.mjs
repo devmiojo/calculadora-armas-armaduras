@@ -41,7 +41,7 @@ test('catalog authorization, validation and price cycles never corrupt saved val
   const negative=structuredClone(catalog);negative.materials[0].price=-1;
   const duplicate=structuredClone(catalog);duplicate.recipes.push(duplicate.recipes[0]);
   for(const invalid of [cycle,negative,duplicate])assert.equal((await request('/api/catalog','PATCH',{version:1,actor:'Kai',catalog:invalid},a)).status,400);
-  assert.equal((await request('/api/catalog','PATCH',{version:1,actor:'',catalog},a)).status,400);
+  assert.equal((await request('/api/catalog','PATCH',{version:1,actor:'x'.repeat(121),catalog},a)).status,400);
   assert.equal((await request('/api/catalog','GET',null,a)).data.version,1);
   for(const path of ['catalog-model.mjs','pricing-core.mjs'])assert.equal(file('docs/'+path),file('backend/'+path));
   const context=vm.createContext({window:{}});vm.runInContext(file('docs/pricing.js'),context);
@@ -203,22 +203,37 @@ test('a price deletion confirmation cannot act on another workshop after switchi
   ui.node('#catalog-rows').onclick({target:{closest:()=>({dataset:{deleteMaterial:'m12'}})}});await ui.connect(b);ui.node('#delete-recipe-password').value=TEST_MASTER;await ui.node('#confirm-delete').onclick();assert.match(ui.node('#toast').textContent,/oficina ou o registro mudou/);assert.ok(ui.app.getMaterials().some(m=>m.id==='m12'));
 });
 
-test('master-authorized deletions accept no smith name while ordinary edits still require one',async()=>{
+test('catalog changes and master-authorized deletions accept no smith name',async()=>{
   const {request,sqlite}=fixture(),room=(await request('/api/workshops','POST',{name:'Oficina'})).data;
   const initial=(await request('/api/catalog','POST',{actor:'Kai',catalog},room)).data;
   const edited=structuredClone(initial.catalog);edited.materials[0].price=10;
-  for(const masterPassword of [undefined,TEST_MASTER])assert.equal((await request('/api/catalog','PATCH',{version:1,catalog:edited,masterPassword},room)).status,400);
+  for(const [version,masterPassword] of [[1,undefined],[2,TEST_MASTER]]){const result=await request('/api/catalog','PATCH',{version,catalog:edited,masterPassword},room);assert.equal(result.status,200);assert.equal(result.data.updatedBy,'Não informado');}
   const reduced=structuredClone(initial.catalog);reduced.recipes=reduced.recipes.filter(r=>r.id!=='ingot');
-  assert.equal((await request('/api/catalog','PATCH',{version:1,catalog:reduced,masterPassword:'errada'},room)).status,403);
-  const removed=await request('/api/catalog','PATCH',{version:1,catalog:reduced,masterPassword:TEST_MASTER},room);assert.equal(removed.status,200);assert.equal(removed.data.updatedBy,'Administrador (senha master)');
+  assert.equal((await request('/api/catalog','PATCH',{version:3,catalog:reduced,masterPassword:'errada'},room)).status,403);
+  const removed=await request('/api/catalog','PATCH',{version:3,catalog:reduced,masterPassword:TEST_MASTER},room);assert.equal(removed.status,200);assert.equal(removed.data.updatedBy,'Administrador (senha master)');
   assert.equal((await request('/api/workshops/'+room.id,'DELETE',{confirmationName:room.name,masterPassword:TEST_MASTER},room)).status,200);assert.equal(sqlite.prepare('SELECT deleted_by FROM workshops WHERE id = ?').get(room.id).deleted_by,'Administrador (senha master)');
 });
 
 test('blank smith name does not block recipe, catalog item or workshop deletion in the interface',async()=>{
   const {request,fetch}=fixture(),room=(await request('/api/workshops','POST',{name:'Rosa de Ferro'})).data,ui=browser(fetch);await loadOrders(ui);
   await ui.node('#workshop-list').onclick({target:{closest:()=>({dataset:{enterWorkshop:room.id}})}});assert.equal(ui.node('#smith-name').value,'');
-  ui.node('#new-order').onclick();assert.match(ui.node('#toast').textContent,/Informe seu nome de ferreiro/);
+  ui.node('#new-order').onclick();assert.equal(ui.node('#order-dialog').open,true);ui.node('#order-dialog').close();
   const recipe=ui.app.getRecipes().find(r=>r.name==='Armadura de aço');await ui.node('#recipe-cards').onclick({target:{closest:()=>({dataset:{delete:recipe.id}})}});ui.node('#delete-recipe-password').value=TEST_MASTER;await ui.node('#confirm-delete').onclick();assert.ok(!ui.app.getRecipes().some(r=>r.id===recipe.id));
   ui.node('#catalog-rows').onclick({target:{closest:()=>({dataset:{deleteMaterial:'m12'}})}});ui.node('#delete-recipe-password').value=TEST_MASTER;await ui.node('#confirm-delete').onclick();assert.ok(!ui.app.getMaterials().some(m=>m.id==='m12'));
   ui.node('#workshop-list').onclick({target:{closest:()=>({dataset:{deleteWorkshop:room.id}})}});ui.node('#delete-workshop-confirmation').value=room.name;ui.node('#delete-workshop-password').value=TEST_MASTER;await ui.node('#workshop-delete-form').onsubmit({preventDefault(){}});assert.equal((await request('/api/workshops')).data.workshops.length,0);assert.equal(ui.node('#smith-name').value,'');
+});
+
+test('catalog can be initialized and saved without an actor',async()=>{
+  const {request}=fixture(),room=(await request('/api/workshops','POST',{name:'Oficina'})).data;
+  const result=await request('/api/catalog','POST',{catalog},room);assert.equal(result.status,200);assert.equal(result.data.updatedBy,'Não informado');
+  const changed=structuredClone(result.data.catalog);changed.materials[0].price=10;
+  const updated=await request('/api/catalog','PATCH',{version:1,catalog:changed},room);assert.equal(updated.status,200);assert.equal(updated.data.updatedBy,'Não informado');assert.equal(updated.data.catalog.materials[1].price,35);
+});
+
+test('saving recipes, prices and orders in the interface never requires a smith name',async()=>{
+  const {request,fetch}=fixture(),room=(await request('/api/workshops','POST',{name:'Oficina'})).data,ui=browser(fetch);await loadOrders(ui);await ui.node('#workshop-list').onclick({target:{closest:()=>({dataset:{enterWorkshop:room.id}})}});assert.equal(ui.node('#smith-name').value,'');
+  ui.node('#new-recipe').onclick();ui.node('#recipe-name').value='Receita sem ferreiro';ui.node('#recipe-category').value='Armas';ui.node('#search-results').onclick({target:{closest:()=>({dataset:{add:'m9'}})}});await ui.node('#save-recipe').onclick();assert.ok(ui.app.getRecipes().some(r=>r.name==='Receita sem ferreiro'));
+  ui.node('#catalog-rows').onclick({target:{closest:()=>({dataset:{edit:'m13'}})}});ui.node('#mat-price').value='17';ui.node('#mat-pricing-recipe').value='';await ui.node('#material-form').onsubmit({preventDefault(){}});assert.equal(ui.app.getMaterials().find(m=>m.id==='m13').price,17);
+  ui.node('#new-order').onclick();ui.node('#order-customer').value='Cliente';ui.node('#order-items').oninput({target:{dataset:{orderField:'name',orderLine:'0'},value:'Item novo'}});await ui.node('#order-form').onsubmit({preventDefault(){}});
+  const saved=(await request('/api/orders','GET',null,room)).data.orders[0];assert.ok(saved);assert.equal(saved.createdBy,'Não informado');assert.equal(ui.node('#smith-name').value,'');
 });

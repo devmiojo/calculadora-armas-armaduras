@@ -57,11 +57,11 @@ export function orderTotal(order){
   return {value:Math.round(order.items.reduce((sum,item)=>sum+(item.unitPrice??0)*item.qty,0)*100)/100,hasUnpriced:order.items.some(item=>item.unitPrice===null)};
 }
 export function createOrder(input,now=new Date().toISOString()){
-  const createdBy=text(input.createdBy,'quem está registrando a encomenda');
+  const createdBy=text(input.createdBy,'quem está registrando a encomenda',120,false)||'Não informado';
   return {customer:text(input.customer,'o cliente'),notes:text(input.notes,'as observações',2000,false),items:validateItems(input.items).map(item=>({...item,productionStatus:'pending',madeBy:null,madeAt:null})),status:'pending',createdBy,assignedTo:null,completedBy:null,deliveredBy:null,completedAt:null,deliveredAt:null,events:[{type:'created',actor:createdBy,at:now}]};
 }
 export function changeOrder(current,input,now=new Date().toISOString()){
-  const actor=text(input.actor,'o nome do ferreiro');
+  const actor=text(input.actor,'o nome do ferreiro',120,false)||'Não informado';
   const order=normalizeOrder(current);
   let event={type:input.action,actor,at:now};
   switch(input.action){

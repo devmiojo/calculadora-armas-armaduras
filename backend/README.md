@@ -6,7 +6,7 @@ O serviço preparado para esta aplicação é `https://forja-encomendas.lannahec
 
 ## Uso
 
-1. Em **Encomendas**, informe seu nome de personagem.
+1. Em **Encomendas**, o nome do personagem é opcional.
 2. O responsável cria a oficina uma vez; ela aparece em **Oficinas criadas**.
 3. Os ferreiros abrem esse link para acessar a mesma lista.
 4. Cadastre cliente, itens livres, quantidades, valores e observações. Receitas existentes podem preencher o preço; itens sem receita também são aceitos.
@@ -14,7 +14,7 @@ O serviço preparado para esta aplicação é `https://forja-encomendas.lannahec
 6. **Marcar item como feito** registra quem craftou aquele item; ferreiros diferentes podem fazer itens diferentes. Quando todos estão feitos, o pedido fica **Pronto (craftado)**, ainda sem entrega.
 7. Use **Entregar ao cliente** depois de pronto. Quem produziu permanece registrado e a entrega recebe responsável e data próprios.
 
-As oficinas são abertas aos visitantes do site e listadas pelo servidor. **Entrar** emite uma chave de acesso para a oficina escolhida; a tabela `workshop_access` guarda somente o hash dessa chave. Links anteriores continuam válidos como atalhos e são transportados no fragmento da URL. A chave é armazenada no navegador dos participantes; o banco guarda somente seu hash. A API exige a chave em cada leitura ou alteração de encomendas. O nome do ferreiro é informado manualmente para o RP.
+As oficinas são abertas aos visitantes do site e listadas pelo servidor. **Entrar** emite uma chave de acesso para a oficina escolhida; a tabela `workshop_access` guarda somente o hash dessa chave. Links anteriores continuam válidos como atalhos e são transportados no fragmento da URL. A chave é armazenada no navegador dos participantes; o banco guarda somente seu hash. A API exige a chave em cada leitura ou alteração de encomendas. O nome do ferreiro é opcional e informado manualmente para o RP.
 
 Os valores combinados de uma encomenda são registrados como orçamento. Alterar os preços do catálogo recalcula as receitas; encomendas já registradas mantêm os valores acordados até uma edição explícita.
 
@@ -63,4 +63,6 @@ Para atualizar um serviço alternativo existente, aplique `migrations/0002_works
 
 Configure `FORGE_MASTER_PASSWORD` como segredo do Worker (em Sites, segredo do ambiente de produção; em hospedagem alternativa, `wrangler secret put FORGE_MASTER_PASSWORD`). Nunca inclua o valor no repositório ou no frontend. `DELETE /api/workshops/:id` exige chave da oficina, `confirmationName` e `masterPassword`. `actor` é opcional; sem nome, a exclusão fica registrada como `Administrador (senha master)`. A exclusão registra `deleted_at` e `deleted_by`, oculta a oficina e bloqueia seus acessos, preservando os dados. `PATCH /api/catalog` também exige `masterPassword` sempre que remove identificadores de receitas ou materiais; alteração comum continua sem senha. Sem segredo configurado, exclusões são recusadas. Aplique `migrations/0003_master_deletion.sql` para atualizar um serviço alternativo existente.
 
-Remoções de receitas ou materiais em `PATCH /api/catalog` também aceitam `actor` ausente após validar a senha master. Alterações comuns ainda exigem autoria, mesmo quando a requisição inclui uma senha.
+Remoções de receitas ou materiais em `PATCH /api/catalog` também aceitam `actor` ausente após validar a senha master. Alterações comuns aceitam nome ausente e registram `Não informado`.
+
+`actor` e `createdBy` são opcionais nos salvamentos e ações de encomendas. Nome ausente recebe `Não informado`, inclusive na produção e entrega. Nomes fornecidos continuam sujeitos ao limite de 120 caracteres. Os demais campos necessários (cliente, item, quantidade e valores válidos) permanecem validados.

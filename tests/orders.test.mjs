@@ -62,12 +62,12 @@ test('workshop links protect records and separate different offices',async()=>{
   assert.equal((await request('/api/workshops','POST',{name:'X'},null,'https://unrelated.example')).status,403);
 });
 
-test('invalid quantities, prices and missing maker cannot corrupt orders',async()=>{
+test('invalid quantities, prices and oversized names cannot corrupt orders',async()=>{
   const {request}=fixture(),room=(await request('/api/workshops','POST',{name:'Oficina'})).data;
   for(const item of [{...freeItem,qty:0},{...freeItem,unitPrice:-1},{...freeItem,qty:1.5}])assert.equal((await request('/api/orders','POST',{id:'invalid-01',customer:'Cliente',createdBy:'Mercador',items:[item]},room)).status,400);
   assert.equal((await request('/api/orders','GET',null,room)).data.orders.length,0);
   await request('/api/orders','POST',{id:'order-maker',customer:'Cliente',createdBy:'Mercador',items:[freeItem]},room);
-  assert.equal((await request('/api/orders/order-maker','PATCH',{version:1,action:'complete',actor:''},room)).status,400);
+  assert.equal((await request('/api/orders/order-maker','PATCH',{version:1,action:'complete',actor:'x'.repeat(121)},room)).status,400);
   assert.equal((await request('/api/orders/order-maker','PATCH',{version:1,action:'deliver',actor:'Mercador'},room)).status,409);
   assert.equal((await request('/api/orders','GET',null,room)).data.orders[0].version,1);
 });
@@ -115,4 +115,13 @@ test('invalid recipes are rejected without changing the item',async()=>{
 test('existing delivered orders keep their previous maker and delivery timestamp',()=>{
   const old={customer:'Cliente',createdBy:'Mercador',status:'delivered',completedBy:'Kai',completedAt:'2026-10-12T12:00:00Z',items:[freeItem]};
   const hydrated=normalizeOrder(old);assert.equal(hydrated.items[0].productionStatus,'made');assert.equal(hydrated.items[0].madeBy,'Kai');assert.equal(hydrated.deliveredAt,old.completedAt);assert.equal(hydrated.items[0].unitPrice,125);
+});
+
+test('orders can be created, edited, quoted, crafted and delivered without a smith name',async()=>{
+  const {request}=fixture(),room=(await request('/api/workshops','POST',{name:'Oficina'})).data;
+  let result=await request('/api/orders','POST',{id:'anonymous-order',customer:'Cliente',items:[{name:'Espada experimental',qty:1,unitPrice:null}]},room);assert.equal(result.status,201);assert.equal(result.data.order.createdBy,'Não informado');
+  result=await request('/api/orders/anonymous-order','PATCH',{version:1,action:'edit',customer:'Outro cliente',items:result.data.order.items,notes:'Novo pedido'},room);assert.equal(result.status,200);assert.equal(result.data.order.events.at(-1).actor,'Não informado');
+  result=await request('/api/orders/anonymous-order','PATCH',{version:2,action:'edit_item',itemId:'item-0',recipe:swordRecipe},room);assert.equal(result.status,200);assert.equal(result.data.order.items[0].unitPrice,226.55);
+  result=await request('/api/orders/anonymous-order','PATCH',{version:3,action:'make_item',itemId:'item-0'},room);assert.equal(result.status,200);assert.equal(result.data.order.items[0].madeBy,'Não informado');assert.equal(result.data.order.status,'ready');
+  result=await request('/api/orders/anonymous-order','PATCH',{version:4,action:'deliver'},room);assert.equal(result.status,200);assert.equal(result.data.order.deliveredBy,'Não informado');assert.equal(result.data.order.completedBy,'Não informado');
 });

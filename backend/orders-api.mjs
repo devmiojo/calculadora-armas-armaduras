@@ -76,7 +76,7 @@ export async function handleOrders(request,db,masterPassword){
         if(actor.length>120)throw new OrderError('Nome inválido.');
         const catalog=validateCatalog(input.catalog),now=new Date().toISOString();
         if(request.method==='POST'){
-          if(!actor)throw new OrderError('Informe seu nome antes de alterar o catálogo.');
+          actor=actor||'Não informado';
           await db.prepare('INSERT INTO catalogs (workshop_id, document, version, updated_by, updated_at) VALUES (?, ?, 1, ?, ?) ON CONFLICT(workshop_id) DO NOTHING').bind(room.id,JSON.stringify(catalog),actor,now).run();
         }else{
           if(!Number.isInteger(input.version)||input.version<1)throw new OrderError('Versão do catálogo inválida.');
@@ -85,7 +85,7 @@ export async function handleOrders(request,db,masterPassword){
           const previous=JSON.parse(current.document),nextIds=new Set(catalog.recipes.map(r=>r.id)),materialIds=new Set(catalog.materials.map(m=>m.id));
           const deleting=previous.recipes.some(r=>!nextIds.has(r.id))||previous.materials.some(m=>!materialIds.has(m.id));
           if(deleting){await requireMaster(input);actor=actor||'Administrador (senha master)';}
-          else if(!actor)throw new OrderError('Informe seu nome antes de alterar o catálogo.');
+          else actor=actor||'Não informado';
           const result=await db.prepare('UPDATE catalogs SET document = ?, version = version + 1, updated_by = ?, updated_at = ? WHERE workshop_id = ? AND version = ?').bind(JSON.stringify(catalog),actor,now,room.id,input.version).run();
           if(!result.meta.changes)throw new OrderError('Outro jogador alterou o catálogo. Atualize e reabra a receita ou material antes de salvar. Seu rascunho foi preservado.',409);
         }
