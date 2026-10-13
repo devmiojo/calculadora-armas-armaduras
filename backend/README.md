@@ -1,6 +1,6 @@
 # Encomendas compartilhadas
 
-O GitHub Pages serve a calculadora estática. Este serviço persiste as encomendas em um banco D1 compartilhado; os dados não dependem do navegador de quem criou o pedido.
+O GitHub Pages serve a calculadora estática. Este serviço persiste o catálogo de materiais, preços, receitas e as encomendas em um banco D1 compartilhado; os dados não dependem do navegador de quem criou o pedido.
 
 O serviço preparado para esta aplicação é `https://forja-encomendas.lannahechee.chatgpt.site`. A página em `docs/orders-config.js` aponta para esse endereço. A versão inicial de revisão é privada; o serviço precisa ser publicado para acesso dos ferreiros antes de usar encomendas pela página pública no GitHub Pages.
 
@@ -24,6 +24,9 @@ As atualizações usam versões para impedir que duas pessoas sobrescrevam o mes
 
 | Operação | Rota |
 |---|---|
+| Consultar catálogo | `GET /api/catalog` |
+| Inicializar catálogo uma vez | `POST /api/catalog` |
+| Alterar catálogo com versão | `PATCH /api/catalog` |
 | Criar oficina | `POST /api/workshops` |
 | Verificar acesso | `GET /api/workshops` |
 | Listar encomendas | `GET /api/orders` |
@@ -45,3 +48,9 @@ node --test tests/pricing.test.cjs tests/orders.test.mjs
 ```
 
 Os testes verificam persistência, itens livres, valores a combinar, entrega, autoria, histórico, concorrência, acesso separado por oficina, validação dos dados e o recálculo de preços.
+
+## Catálogo compartilhado
+
+A tabela `catalogs` guarda um documento por oficina, versão, autor e data da última alteração. A API valida materiais e receitas e recalcula a cadeia de preços no servidor. A inicialização é idempotente e não substitui um catálogo existente. Alterações exigem a versão atual e usam UPDATE condicional; conflitos retornam 409 sem sobrescrever dados. Orçamentos já acordados nas encomendas preservam seu histórico, mesmo quando o catálogo muda. A migração incremental no Site cria somente a nova tabela.
+
+Para atualizar um serviço alternativo que já usa `schema.sql`, aplique somente `migrations/0001_shared_catalog.sql` à base existente antes de publicar esta API. Não recrie as tabelas de encomendas.

@@ -1,4 +1,4 @@
-import {ORDER_STATUSES,validateItems,orderTotal,validateRecipe,recipeQuote} from './order-model.mjs?v=6';
+import {ORDER_STATUSES,validateItems,orderTotal,validateRecipe,recipeQuote} from './order-model.mjs?v=7';
 
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
 const app=window.FORJA_APP,esc=app.esc,fmt=app.fmt;
@@ -30,7 +30,7 @@ function parseAccess(value){
   let parsed;try{parsed=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(code.replaceAll('-','+').replaceAll('_','/')),char=>char.charCodeAt(0))))}catch{throw Error('Link de oficina inválido.');}
   if(!parsed||typeof parsed.id!=='string'||typeof parsed.key!=='string'||parsed.id.length>80||parsed.key.length>200)throw Error('Link de oficina inválido.');return parsed;
 }
-async function join(access){const verified=await api('/api/workshops',{},access);room={...access,name:verified.name};saveLocal(ROOM_KEY,JSON.stringify(room));rememberRoom(room);history.replaceState(null,'',location.pathname+location.search);await refresh(true);app.switchView('orders');}
+async function join(access){const verified=await api('/api/workshops',{},access);room={...access,name:verified.name};saveLocal(ROOM_KEY,JSON.stringify(room));rememberRoom(room);history.replaceState(null,'',location.pathname+location.search);await window.FORJA_CATALOG.connect({room,api:((access)=>(path,options)=>api(path,options,access))(room),actor:smith,initialActor:$('#smith-name').value.trim()});await refresh(true);app.switchView('orders');}
 function render(){
   const known=knownRooms();$('#orders-known-rooms').hidden=!known.length;$('#known-workshop-select').innerHTML=known.map(r=>`<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('');
   $('#orders-connect').hidden=Boolean(room);$('#orders-board').hidden=!room;$('#new-order').hidden=!room;
@@ -54,8 +54,8 @@ $('#join-workshop-form').onsubmit=e=>{e.preventDefault();return action(async()=>
 $('#share-workshop').onclick=()=>{if(!room)return;$('#share-workshop-link').value=window.FORGE_PUBLIC_URL+'#oficina='+accessCode(room);$('#workshop-share-dialog').showModal()};
 $('#copy-workshop-link').onclick=async()=>{try{await navigator.clipboard.writeText($('#share-workshop-link').value);app.toast('Link copiado. Envie aos ferreiros.')}catch{$('#share-workshop-link').select();app.toast('Selecione e copie o link da oficina.')}};
 $('#open-known-workshop').onclick=()=>action(async()=>{const access=knownRooms().find(r=>r.id===$('#known-workshop-select').value);if(!access)throw Error('Escolha uma oficina.');await join(access)});
-$('#change-workshop').onclick=()=>{room=null;orders=[];try{localStorage.removeItem(ROOM_KEY)}catch{}render();app.toast('A oficina continua salva. Use o link para entrar novamente.')};
-$('#refresh-orders').onclick=()=>refresh(true);$('#order-filter').oninput=$('#order-status-filter').onchange=render;
+$('#change-workshop').onclick=()=>{window.FORJA_CATALOG.disconnect();room=null;orders=[];try{localStorage.removeItem(ROOM_KEY)}catch{}render();app.toast('A oficina continua salva. Use o link para entrar novamente.')};
+$('#refresh-orders').onclick=()=>action(async()=>{if(!window.FORJA_CATALOG.getVersion())await window.FORJA_CATALOG.connect({room,api:((access)=>(path,options)=>api(path,options,access))(room),actor:smith,initialActor:$('#smith-name').value.trim()});else await window.FORJA_CATALOG.refresh();await refresh(true)});$('#order-filter').oninput=$('#order-status-filter').onchange=render;
 function renderEditorItems(){
   $('#order-items').innerHTML=editor.items.map((item,i)=>`<div class="order-editor-item"><label>Item<input data-order-line="${i}" data-order-field="name" list="order-recipe-options" maxlength="120" required value="${esc(item.name)}" placeholder="Nome livre ou receita cadastrada"></label><label>Qtd.<input type="number" min="1" max="1000000" step="1" required data-order-line="${i}" data-order-field="qty" value="${item.qty}"></label><label>Valor unitário (S)<input type="number" min="0" max="1000000000" step="0.01" data-order-line="${i}" data-order-field="unitPrice" value="${item.unitPrice??''}" placeholder="A combinar"></label><button type="button" class="icon-button" data-remove-order-item="${i}" aria-label="Remover item">×</button><button type="button" class="text-button order-editor-recipe" data-edit-order-recipe="${i}">${item.recipe?'Editar materiais e cálculo':'Definir materiais e calcular'}</button></div>`).join('');
   $('#order-editor-total').textContent=totalLabel(editor);
@@ -124,12 +124,12 @@ $('#order-item-recipe-form').onsubmit=e=>{e.preventDefault();return action(async
   if(recipeEditor.readOnly)return;smith();readItemRecipe();const recipe=validateRecipe(recipeEditor.recipe),quote=recipeQuote(recipe),context=recipeEditor;
   if(context.order){await api('/api/orders/'+context.order.id,{method:'PATCH',body:JSON.stringify({action:'edit_item',actor:smith(),version:context.order.version,itemId:context.itemId,recipe})});await refresh(true);}
   else{const item=editor.items[context.index];item.recipe=recipe;item.priceMode='recipe';item.unitPrice=Math.round(quote.sale*100)/100;renderEditorItems();}
-  if($('#order-recipe-save-local').checked)app.saveOrderRecipe(recipe);
+  if($('#order-recipe-save-local').checked)await app.saveOrderRecipe(recipe);
   $('#order-item-recipe-dialog').close();app.toast(context.order?'Materiais salvos. Valor do item e da encomenda recalculados.':'Receita aplicada ao item. Salve a encomenda para compartilhar.');
 })};
-window.FORJA_ORDERS={open:()=>refresh(true)};
+window.FORJA_ORDERS={open:()=>{refresh(true);window.FORJA_CATALOG.refresh()}};
 render();
 const fragment=location.hash;
-if(fragment.startsWith('#oficina=')){action(async()=>join(parseAccess(fragment))).catch(error=>app.toast(error.message));}else if(room)refresh(false);
+if(fragment.startsWith('#oficina=')){action(async()=>join(parseAccess(fragment))).catch(error=>app.toast(error.message));}else if(room)action(async()=>{const access=room;await window.FORJA_CATALOG.connect({room:access,api:(path,options)=>api(path,options,access),actor:smith,initialActor:$('#smith-name').value.trim()});await refresh(false)});
 setInterval(()=>{if(!document.hidden&&!$('#orders').hidden&&room&&!busy)refresh(false)},20000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#orders').hidden&&room)refresh(false)});

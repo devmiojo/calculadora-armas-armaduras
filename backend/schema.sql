@@ -17,3 +17,10 @@ CREATE TABLE `workshops` (
 	`token_hash` text NOT NULL,
 	`created_at` text NOT NULL
 );
+CREATE TABLE `catalogs` (
+  `workshop_id` text PRIMARY KEY NOT NULL REFERENCES `workshops`(`id`),
+  `document` text NOT NULL,
+  `version` integer DEFAULT 1 NOT NULL,
+  `updated_by` text NOT NULL,
+  `updated_at` text NOT NULL
+);

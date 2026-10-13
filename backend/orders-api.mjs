@@ -1,12 +1,13 @@
 import {createOrder,changeOrder,normalizeOrder,OrderError} from './order-model.mjs';
+import {validateCatalog} from './catalog-model.mjs';
 
 const ALLOWED_ORIGINS=new Set(['https://devmiojo.github.io','https://forja-encomendas.lannahechee.chatgpt.site']);
 const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 const json=(data,status=200,origin='')=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Vary':'Origin',...(origin?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Credentials':'true'}:{})}});
 const decode=row=>({...normalizeOrder(JSON.parse(row.document)),id:row.id,version:row.version,createdAt:row.created_at,updatedAt:row.updated_at});
-async function body(request){
+async function body(request,limit=65536){
   if(!request.headers.get('content-type')?.includes('application/json'))throw new OrderError('Envie dados em JSON.',415);
-  const raw=await request.text();if(raw.length>65536)throw new OrderError('Encomenda muito grande.',413);
+  const raw=await request.text();if(raw.length>limit)throw new OrderError('Dados muito grandes.',413);
   try{return JSON.parse(raw);}catch{throw new OrderError('Dados inválidos.');}
 }
 async function workshop(request,db){
@@ -37,6 +38,24 @@ export async function handleOrders(request,db){
     }
     const room=await workshop(request,db);
     if(path==='/api/workshops'&&request.method==='GET')return json(room,200,origin);
+    if(path==='/api/catalog'){
+      const read=()=>db.prepare('SELECT * FROM catalogs WHERE workshop_id = ?').bind(room.id).first();
+      const decodeCatalog=row=>row?{catalog:JSON.parse(row.document),version:row.version,updatedBy:row.updated_by,updatedAt:row.updated_at}:{catalog:null,version:0};
+      if(request.method==='GET')return json(decodeCatalog(await read()),200,origin);
+      if(['POST','PATCH'].includes(request.method)){
+        const input=await body(request,2*1024*1024),actor=typeof input.actor==='string'?input.actor.trim():'';
+        if(!actor||actor.length>120)throw new OrderError('Informe seu nome antes de alterar o catálogo.');
+        const catalog=validateCatalog(input.catalog),now=new Date().toISOString();
+        if(request.method==='POST'){
+          await db.prepare('INSERT INTO catalogs (workshop_id, document, version, updated_by, updated_at) VALUES (?, ?, 1, ?, ?) ON CONFLICT(workshop_id) DO NOTHING').bind(room.id,JSON.stringify(catalog),actor,now).run();
+        }else{
+          if(!Number.isInteger(input.version)||input.version<1)throw new OrderError('Versão do catálogo inválida.');
+          const result=await db.prepare('UPDATE catalogs SET document = ?, version = version + 1, updated_by = ?, updated_at = ? WHERE workshop_id = ? AND version = ?').bind(JSON.stringify(catalog),actor,now,room.id,input.version).run();
+          if(!result.meta.changes)throw new OrderError('Outro jogador alterou o catálogo. Atualize e reabra a receita ou material antes de salvar. Seu rascunho foi preservado.',409);
+        }
+        return json(decodeCatalog(await read()),200,origin);
+      }
+    }
     if(path==='/api/orders'&&request.method==='GET'){
       const rows=await db.prepare('SELECT * FROM orders WHERE workshop_id = ? ORDER BY created_at DESC LIMIT 5000').bind(room.id).all();
       return json({orders:rows.results.map(decode)},200,origin);
