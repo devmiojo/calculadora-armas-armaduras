@@ -2,6 +2,8 @@
 
 Calculadora de preços e livro de encomendas para ferreiros de Skyrim RP. Inclui 71 registros de 9 vendedores, oito receitas iniciais e busca em português e inglês.
 
+O nome do ferreiro é opcional em todos os salvamentos. Você pode deixar o campo vazio ao cadastrar receitas, preços e encomendas.
+
 ## Precificar
 
 Pesquise materiais, ajuste quantidades e informe mão de obra em percentual, custos fixos e lucro sobre o custo. Alterar um preço vinculado atualiza automaticamente todas as receitas dependentes. Um material também pode usar o preço calculado de outra receita.
