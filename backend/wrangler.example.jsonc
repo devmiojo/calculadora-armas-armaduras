@@ -1,0 +1,10 @@
+{
+  "name": "forja-encomendas",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-12",
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "forja-encomendas",
+    "database_id": "PREENCHER_COM_O_ID_DO_BANCO"
+  }]
+}
